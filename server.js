@@ -3074,7 +3074,14 @@ app.post('/api/updates/cli', (req, res) => {
 // a definition file, and a registry entry — the hook-event equivalent of
 // skill-creator.
 
-const CUSTOM_EVENT_PROMPT = () => `You are a Claude Code custom-event designer.
+const CE_LANG_RULES = {
+  '.mjs': 'Node.js ESM (.mjs): starts with #!/usr/bin/env node; reads stdin JSON via readline lines joined at close; JSON.parse with {} fallback. Cross-platform — recommended.',
+  '.py':  'Python 3 (.py): starts with #!/usr/bin/env python3; reads sys.stdin.read(); json.loads with {} fallback; sys.exit(0) on every path.',
+  '.sh':  'Bash (.sh): starts with #!/usr/bin/env bash; INPUT=$(cat); extract JSON fields via a python3 one-liner helper; exit 0 on every path. macOS/Linux only.',
+  '.ps1': 'PowerShell (.ps1): starts with a comment header line; reads [Console]::In.ReadToEnd(); ConvertFrom-Json inside try/catch; exit 0 on every path. Requires pwsh.',
+};
+
+const CUSTOM_EVENT_PROMPT = (lang = '.mjs') => `You are a Claude Code custom-event designer.
 
 Claude Code fires only its built-in lifecycle events. A CUSTOM EVENT is a
 derived event: a hook attached to the correct built-in event whose script
@@ -3087,13 +3094,13 @@ Given the user's description, output ONLY raw JSON — no prose, no fences:
   "description": "One sentence: when this custom event fires.",
   "underlyingEvent": "one of: ${BUILTIN_HOOK_EVENTS.join(', ')}",
   "matcher": "tool-name regex for PreToolUse/PostToolUse/PostToolUseFailure/Permission* (e.g. \\"Bash\\", \\"Write|Edit\\"); empty string otherwise",
-  "filename": "kebab-case-name.mjs",
+  "filename": "kebab-case-name${lang}",
   "how": "2-3 sentences: how detection works and what the action does.",
-  "hookScript": "the complete Node .mjs script"
+  "hookScript": "the complete script"
 }
 
 hookScript rules — violations invalidate the output:
-- Starts with #!/usr/bin/env node and reads stdin JSON via readline.
+- LANGUAGE: ${CE_LANG_RULES[lang] || CE_LANG_RULES['.mjs']} The filename MUST end with ${lang}.
 - The FIRST comment block documents: CUSTOM EVENT <name>, fires when, underlying event, action taken.
 - Detects the condition precisely; when it does NOT match, exit 0 immediately (the custom event simply did not fire).
 - FAIL-OPEN: all logic inside try/catch, exit 0 in catch — a crashing hook must never block Claude.
@@ -3103,9 +3110,10 @@ hookScript rules — violations invalidate the output:
 Request: `;
 
 app.post('/api/ai/create-custom-event', async (req, res) => {
-  const { description, action = '', provider } = req.body;
+  const { description, action = '', provider, lang: rawLang } = req.body;
   if (!description?.trim()) return res.status(400).json({ error: 'description is required — when should this event fire?' });
-  const fullPrompt = CUSTOM_EVENT_PROMPT()
+  const lang = CE_LANG_RULES[rawLang] ? rawLang : '.mjs';
+  const fullPrompt = CUSTOM_EVENT_PROMPT(lang)
     + `When it should fire: ${description.trim()}`
     + (action.trim() ? `\nWhat should happen when it fires: ${action.trim()}` : '\nWhat should happen when it fires: block the action with a clear reason.');
   try {
@@ -3121,8 +3129,13 @@ app.post('/api/ai/create-custom-event', async (req, res) => {
     const def = JSON.parse(raw.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim());
     if (!/^[A-Z][A-Za-z0-9]{2,39}$/.test(def.name || '')) return res.status(500).json({ error: 'AI returned an invalid event name — try again.' });
     if (!BUILTIN_HOOK_EVENTS.includes(def.underlyingEvent)) return res.status(500).json({ error: `AI chose an unknown underlying event ("${def.underlyingEvent}") — try rephrasing.` });
-    if (!def.hookScript?.startsWith('#!')) return res.status(500).json({ error: 'AI returned an invalid hook script — try again.' });
-    if (!/^[a-z0-9][a-z0-9-]*\.(mjs|js|py|sh)$/.test(def.filename || '')) def.filename = def.name.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase() + '.mjs';
+    if (!def.hookScript?.trim().startsWith('#')) return res.status(500).json({ error: 'AI returned an invalid hook script — try again.' });
+    // Coerce the filename to the requested language
+    if (!/^[a-z0-9][a-z0-9-]*\.(mjs|js|py|sh|ps1)$/.test(def.filename || '')) {
+      def.filename = def.name.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase() + lang;
+    }
+    if (!def.filename.endsWith(lang)) def.filename = def.filename.replace(/\.[^.]+$/, '') + lang;
+    def.lang = lang;
     res.json(def);
   } catch (e) {
     if (e instanceof SyntaxError) return res.status(500).json({ error: 'AI returned invalid JSON. Try again.' });
@@ -3130,7 +3143,7 @@ app.post('/api/ai/create-custom-event', async (req, res) => {
   }
 });
 
-const HOOK_RUNNERS = { '.mjs': 'node', '.js': 'node', '.py': 'python3', '.sh': 'bash' };
+const HOOK_RUNNERS = { '.mjs': 'node', '.js': 'node', '.py': 'python3', '.sh': 'bash', '.ps1': 'pwsh' };
 
 // Append a hook command to settings.json for an event/matcher, reusing groups.
 function wireHookCommand(event, matcher, filename) {
@@ -3177,7 +3190,7 @@ app.post('/api/custom-events/install', (req, res) => {
   const { name, description = '', underlyingEvent, matcher = '', filename, hookScript, how = '' } = req.body;
   if (!/^[A-Z][A-Za-z0-9]{2,39}$/.test(name || '')) return res.status(400).json({ error: 'name must be CamelCase (e.g. GitPushDetected)' });
   if (!BUILTIN_HOOK_EVENTS.includes(underlyingEvent)) return res.status(400).json({ error: 'underlyingEvent must be a real Claude Code event' });
-  if (!/^[a-z0-9][a-z0-9-]*\.(mjs|js|py|sh)$/.test(filename || '')) return res.status(400).json({ error: 'filename must be kebab-case with .mjs/.js/.py/.sh extension' });
+  if (!/^[a-z0-9][a-z0-9-]*\.(mjs|js|py|sh|ps1)$/.test(filename || '')) return res.status(400).json({ error: 'filename must be kebab-case with .mjs/.js/.py/.sh/.ps1 extension' });
   if (!hookScript?.trim()) return res.status(400).json({ error: 'hookScript is required' });
   const cfg = loadConfig();
   if ((cfg.customEvents || []).some(e => e.name === name)) return res.status(409).json({ error: `Custom event "${name}" already exists` });
@@ -3189,12 +3202,18 @@ app.post('/api/custom-events/install', (req, res) => {
     atomicWrite(filePath, hookScript);
     if (process.platform !== 'win32') { try { execSync(`chmod +x "${filePath.replace(/"/g, '\\"')}"`, { shell: true }); } catch {} }
     // 2) wire it to the underlying event in settings.json
-    wireHookCommand(underlyingEvent, matcher, filename);
+    const wiredCommand = wireHookCommand(underlyingEvent, matcher, filename);
     // 3) record in the registry
     cfg.customEvents = cfg.customEvents || [];
     cfg.customEvents.push({ name, description, underlyingEvent, matcher, filename, how, createdAt: new Date().toISOString() });
     saveConfig(cfg);
-    res.status(201).json({ ok: true, name, file: filePath, wiredTo: underlyingEvent + (matcher ? ` (matcher: ${matcher})` : '') });
+    res.status(201).json({
+      ok: true, name, file: filePath,
+      wiredTo: underlyingEvent + (matcher ? ` (matcher: ${matcher})` : ''),
+      command: wiredCommand,
+      // exact settings.json entry, so the UI can show precisely what was written
+      settingsSnippet: { hooks: { [underlyingEvent]: [{ ...(matcher ? { matcher } : {}), hooks: [{ type: 'command', command: wiredCommand }] }] } },
+    });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

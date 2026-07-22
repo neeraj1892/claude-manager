@@ -828,10 +828,40 @@
         <textarea id="ceAction" rows="2" placeholder="e.g. block the command with a clear reason / log it to a file / redirect Claude to run tests first"></textarea>
       </div>
       <div class="form-group">
+        <label class="form-label">Script language</label>
+        <div style="display:flex;gap:6px;margin-top:4px;flex-wrap:wrap">
+          <button class="gen-type-tab active" data-ce-lang=".mjs" type="button">⚡ Node.js <span style="font-size:10px;opacity:.7">.mjs · recommended</span></button>
+          <button class="gen-type-tab" data-ce-lang=".py" type="button">🐍 Python <span style="font-size:10px;opacity:.7">.py</span></button>
+          <button class="gen-type-tab" data-ce-lang=".sh" type="button">🐚 Bash <span style="font-size:10px;opacity:.7">.sh · macOS/Linux</span></button>
+          <button class="gen-type-tab" data-ce-lang=".ps1" type="button">🪟 PowerShell <span style="font-size:10px;opacity:.7">.ps1 · needs pwsh</span></button>
+        </div>
+        <div style="font-size:11px;color:var(--text-dim);margin-top:4px">Node.js works everywhere Claude Code runs. Python/Bash/PowerShell need their runtime installed.</div>
+      </div>
+      <div class="form-group">
         <label class="form-label">Design with</label>
         <div style="display:flex;gap:6px;margin-top:4px">
           <button class="gen-type-tab active" id="ceProvCli" type="button">⚡ Claude CLI</button>
           <button class="gen-type-tab" id="ceProvOr" type="button">🌐 OpenRouter</button>
+        </div>
+      </div>
+      <div id="ceOrConfig" style="display:none;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px;margin-bottom:14px">
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <div style="flex:1;min-width:200px">
+            <label class="form-label">OpenRouter API key <span id="ceOrKeyStatus" style="font-weight:400"></span></label>
+            <input type="password" id="ceOrKey" placeholder="sk-or-…" autocomplete="off">
+          </div>
+          <div style="flex:1;min-width:180px">
+            <label class="form-label">Model</label>
+            <select id="ceOrModel" style="width:100%">
+              <option value="anthropic/claude-sonnet-4-5">Claude Sonnet 4.5 (Recommended)</option>
+              <option value="anthropic/claude-opus-4-5">Claude Opus 4.5</option>
+              <option value="anthropic/claude-haiku-4-5">Claude Haiku 4.5 (Fast)</option>
+              <option value="openai/gpt-4o">GPT-4o</option>
+              <option value="openai/gpt-4o-mini">GPT-4o Mini</option>
+              <option value="google/gemini-2.5-flash">Gemini 2.5 Flash</option>
+              <option value="meta-llama/llama-3.3-70b-instruct">Llama 3.3 70B</option>
+            </select>
+          </div>
         </div>
       </div>
       <div class="folder-dialog-actions">
@@ -860,6 +890,14 @@
       <div class="folder-dialog-actions">
         <button class="btn btn-ghost" id="ceBack">← Redesign</button>
         <button class="btn btn-primary" id="ceInstall">✓ Install &amp; Wire Up</button>
+      </div>
+    </div>
+
+    <!-- Done: proof of what happened + how to verify -->
+    <div id="ceDone" style="display:none">
+      <div id="ceDoneSummary"></div>
+      <div class="folder-dialog-actions" style="margin-top:12px">
+        <button class="btn btn-primary" id="ceDoneClose">Done</button>
       </div>
     </div>
   </div>

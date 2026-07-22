@@ -36,6 +36,39 @@ test('AI design validation: description required', async () => {
   assert.equal((await s.api('POST', '/ai/create-custom-event', {})).status, 400);
 });
 
+test('language choice: prompt teaches the chosen language, filename coerced to its extension', async () => {
+  const py = await s.api('POST', '/ai/create-custom-event', {
+    description: 'whenever Claude runs a git push', provider: 'claude-cli', lang: '.py',
+  });
+  assert.equal(py.status, 200);
+  assert.ok(py.data.filename.endsWith('.py'), 'filename coerced to .py: ' + py.data.filename);
+  assert.equal(py.data.lang, '.py');
+  assert.ok(s.readShimPrompt().includes('Python 3 (.py)'), 'Python rules in the design prompt');
+
+  const sh = await s.api('POST', '/ai/create-custom-event', {
+    description: 'whenever Claude runs a git push', provider: 'claude-cli', lang: '.sh',
+  });
+  assert.ok(sh.data.filename.endsWith('.sh'));
+  assert.ok(s.readShimPrompt().includes('Bash (.sh)'));
+
+  // unknown lang falls back to .mjs
+  const bad = await s.api('POST', '/ai/create-custom-event', {
+    description: 'x', provider: 'claude-cli', lang: '.exe',
+  });
+  assert.equal(bad.data.lang, '.mjs');
+});
+
+test('install: PowerShell hooks are wired with pwsh; response carries the settings snippet', async () => {
+  const r = await s.api('POST', '/custom-events/install', {
+    name: 'PwshEvent', description: 'd', underlyingEvent: 'PostToolUse', matcher: 'Bash',
+    filename: 'pwsh-event.ps1', hookScript: '# CUSTOM EVENT PwshEvent\nexit 0', how: 'h',
+  });
+  assert.equal(r.status, 201, JSON.stringify(r.data));
+  assert.ok(r.data.command.startsWith('pwsh '), 'ps1 wired with pwsh runner: ' + r.data.command);
+  assert.ok(r.data.settingsSnippet.hooks.PostToolUse, 'settings snippet returned for the done screen');
+  await s.api('DELETE', '/custom-events/PwshEvent');
+});
+
 test('install: writes the script, wires settings.json, records the registry', async () => {
   const { status, data } = await s.api('POST', '/custom-events/install', def);
   assert.equal(status, 201, JSON.stringify(data));

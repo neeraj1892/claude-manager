@@ -1185,11 +1185,39 @@ async function renderCustomEvents() {
 
 let _ceProvider = 'claude-cli';
 let _ceDef = null;
+let _ceLang = '.mjs';
 
-function setCeProvider(p) {
+function setCeLang(lang) {
+  _ceLang = lang;
+  document.querySelectorAll('#customEventModal [data-ce-lang]').forEach(b =>
+    b.classList.toggle('active', b.dataset.ceLang === lang));
+}
+document.querySelectorAll('#customEventModal [data-ce-lang]').forEach(b => {
+  b.onclick = () => setCeLang(b.dataset.ceLang);
+});
+
+async function setCeProvider(p) {
   _ceProvider = p;
   document.getElementById('ceProvCli').classList.toggle('active', p === 'claude-cli');
   document.getElementById('ceProvOr').classList.toggle('active', p === 'openrouter');
+  document.getElementById('ceOrConfig').style.display = p === 'openrouter' ? '' : 'none';
+  if (p === 'openrouter') {
+    try {
+      const cfg = await api('GET', '/ai-config');
+      const status = document.getElementById('ceOrKeyStatus');
+      const keyInput = document.getElementById('ceOrKey');
+      if (cfg.hasOpenRouterKey) {
+        status.textContent = '✓ key saved — leave blank to use it';
+        status.style.color = 'var(--success)';
+        keyInput.placeholder = '•••••••• (saved)';
+      } else {
+        status.textContent = '— required';
+        status.style.color = 'var(--danger)';
+        keyInput.placeholder = 'sk-or-…';
+      }
+      document.getElementById('ceOrModel').value = cfg.openRouterModel || 'anthropic/claude-sonnet-4-5';
+    } catch {}
+  }
 }
 document.getElementById('ceProvCli').onclick = () => setCeProvider('claude-cli');
 document.getElementById('ceProvOr').onclick  = () => setCeProvider('openrouter');
@@ -1197,8 +1225,11 @@ document.getElementById('ceProvOr').onclick  = () => setCeProvider('openrouter')
 document.getElementById('newCustomEventBtn').onclick = async () => {
   document.getElementById('ceWhen').value = '';
   document.getElementById('ceAction').value = '';
+  document.getElementById('ceOrKey').value = '';
   document.getElementById('ceSetup').style.display = '';
   document.getElementById('ceReview').style.display = 'none';
+  document.getElementById('ceDone').style.display = 'none';
+  setCeLang('.mjs');
   document.getElementById('customEventModal').classList.add('open');
   try {
     const cfg = await api('GET', '/ai-config');
@@ -1225,10 +1256,17 @@ document.getElementById('ceGenerate').onclick = async () => {
   const btn = document.getElementById('ceGenerate');
   btn.disabled = true; btn.textContent = 'Designing…';
   try {
+    // Save inline OpenRouter key/model first (same flow as everywhere else)
+    if (_ceProvider === 'openrouter') {
+      const inlineKey = document.getElementById('ceOrKey').value.trim();
+      const model = document.getElementById('ceOrModel').value;
+      await api('PUT', '/ai-config', inlineKey ? { openRouterKey: inlineKey, openRouterModel: model } : { openRouterModel: model });
+    }
     _ceDef = await api('POST', '/ai/create-custom-event', {
       description: when,
       action: document.getElementById('ceAction').value.trim(),
       provider: _ceProvider,
+      lang: _ceLang,
     });
     document.getElementById('ceName').value = _ceDef.name;
     document.getElementById('ceFilename').value = _ceDef.filename;
@@ -1249,15 +1287,33 @@ document.getElementById('ceInstall').onclick = async () => {
   if (!_ceDef) return;
   const btn = document.getElementById('ceInstall');
   btn.disabled = true; btn.textContent = 'Installing…';
+  const name = document.getElementById('ceName').value.trim();
+  const filename = document.getElementById('ceFilename').value.trim();
   try {
     const r = await api('POST', '/custom-events/install', {
-      ..._ceDef,
-      name: document.getElementById('ceName').value.trim(),
-      filename: document.getElementById('ceFilename').value.trim(),
+      ..._ceDef, name, filename,
       hookScript: document.getElementById('ceScript').value,
     });
-    document.getElementById('customEventModal').classList.remove('open');
-    toast(`Custom event installed — wired to ${r.wiredTo}`);
+    // DONE screen: proof of what happened + how to verify it — no guessing.
+    const langLabel = { '.mjs': 'Node.js', '.js': 'Node.js', '.py': 'Python', '.sh': 'Bash', '.ps1': 'PowerShell' }[filename.match(/\.[^.]+$/)?.[0]] || 'script';
+    document.getElementById('ceDoneSummary').innerHTML = `
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="font-weight:700;font-size:15px">✅ ${escHtml(name)} is live</div>
+        <div class="card" style="padding:10px 14px;font-size:12.5px;line-height:1.6">
+          <div>✓ <strong>Script created</strong> — <code>hooks/${escHtml(filename)}</code> (${langLabel}), executable, fail-open.</div>
+          <div>✓ <strong>Wired automatically</strong> — registered under <code>${escHtml(_ceDef.underlyingEvent)}</code>${_ceDef.matcher ? ` with matcher <code>${escHtml(_ceDef.matcher)}</code>` : ''} in <code>settings.json</code>. This exact entry was written:</div>
+          <pre style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px;font-size:10.5px;overflow:auto;margin:6px 0">${escHtml(JSON.stringify(r.settingsSnippet, null, 2))}</pre>
+          <div>✓ <strong>Registered</strong> — appears in Hooks → Custom Events with a live status badge.</div>
+        </div>
+        <div class="card" style="padding:10px 14px;font-size:12.5px;line-height:1.6">
+          <div style="font-weight:650;margin-bottom:4px">How it works from now on</div>
+          <div>${escHtml(_ceDef.how || '')}</div>
+          <div style="margin-top:6px;color:var(--text-muted)">It fires automatically in <strong>every Claude Code session</strong> — nothing to invoke. To verify: check the ✓ active badge in the Custom Events panel, then trigger the condition in a Claude session (${escHtml(_ceDef.description || '')}).</div>
+          <div style="margin-top:6px;color:var(--text-muted)">To change the detection or action: <strong>Edit script</strong> on its card. To retire it: <strong>Delete</strong> (removes the script and unwires it cleanly).</div>
+        </div>
+      </div>`;
+    document.getElementById('ceReview').style.display = 'none';
+    document.getElementById('ceDone').style.display = '';
     loadHooks();
   } catch (e) {
     toast(e.message, 'error');
@@ -1265,6 +1321,7 @@ document.getElementById('ceInstall').onclick = async () => {
     btn.disabled = false; btn.textContent = '✓ Install & Wire Up';
   }
 };
+document.getElementById('ceDoneClose').onclick = () => document.getElementById('customEventModal').classList.remove('open');
 
 // Hook/script files that live inside skills, plugins, agents, etc.
 function renderElsewhereHooks(items) {
