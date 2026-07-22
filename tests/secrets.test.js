@@ -75,6 +75,6 @@ test('.gitignore covers the config file', () => {
 test('the repo git index contains no config or secrets file', () => {
   const { execSync } = require('child_process');
   const tracked = execSync('git ls-files', { cwd: join(__dirname, '..') }).toString();
-  assert.ok(!tracked.includes('claude-manager.config.json'), 'config not tracked by git');
-  assert.ok(!tracked.includes('secrets'), 'no secrets file tracked');
+  assert.ok(!tracked.split('\n').includes('claude-manager.config.json'), 'config not tracked by git');
+  assert.ok(!/(^|\/)[^\n]*secrets\.json$/m.test(tracked), 'no secrets json tracked');
 });

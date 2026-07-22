@@ -553,7 +553,9 @@ function callOpenRouter(apiKey, model, systemPrompt, userPrompt) {
 // --- Claude CLI helper (stdin pipe to avoid ARG_MAX limits) ---
 function callClaudeCli(fullPrompt) {
   return new Promise((resolve, reject) => {
-    const tmpFile = join(tmpdir(), `claude-skill-${Date.now()}.txt`);
+    // Unique per process + call: Date.now() alone collides when two
+    // generations run in the same millisecond, corrupting both prompts.
+    const tmpFile = join(tmpdir(), `claude-prompt-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}.txt`);
     try { writeFileSync(tmpFile, fullPrompt, 'utf8'); } catch (e) { return reject(new Error('Failed to write temp file: ' + e.message)); }
     const cmd = process.platform === 'win32'
       ? `type "${tmpFile.replace(/"/g, '\\"')}" | claude -p --dangerously-skip-permissions --allowedTools ""`

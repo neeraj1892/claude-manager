@@ -76,6 +76,18 @@ test('every provider-capable modal exposes an OpenRouter config block', (t) => {
   }
 });
 
+test('workflow templates: Run disabled + Install shown until components exist', async (t) => {
+  if (skipIfNoDom(t)) return;
+  await w.eval('loadWorkflows()');
+  await new Promise(r => setTimeout(r, 50));
+  const card = w.document.querySelector('#section-workflows .workflow-card');
+  assert.ok(card, 'template cards rendered');
+  const run = card.querySelector('.btn-run');
+  assert.ok(run.disabled, 'Run disabled when workflow not installed');
+  assert.ok(run.title.toLowerCase().includes('install'), 'disabled Run explains why');
+  assert.ok(card.querySelector('[data-wf-card-install]'), 'Install button present on the card');
+});
+
 test('keybindings + hooks subtabs render (regression)', async (t) => {
   if (skipIfNoDom(t)) return;
   await w.eval('loadKeybindings()');

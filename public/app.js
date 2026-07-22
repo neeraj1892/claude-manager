@@ -6141,6 +6141,23 @@ async function loadWorkflows() {
   let myWorkflows = [];
   try { myWorkflows = await api('GET', '/workflows'); }
   catch (e) { toast('Could not load your workflows: ' + e.message, 'error'); }
+
+  // What's actually on disk — a workflow is runnable only when installed
+  const inv = { skill: new Set(), agent: new Set(), hook: new Set(), command: new Set() };
+  try {
+    const [sk, ag, hk, cm] = await Promise.all([
+      api('GET', '/skills'), api('GET', '/agents'), api('GET', '/hooks'), api('GET', '/commands'),
+    ]);
+    sk.forEach(x => inv.skill.add(x.name.toLowerCase()));
+    ag.forEach(x => inv.agent.add(x.name.toLowerCase()));
+    (hk.files || []).forEach(x => inv.hook.add(x.name.toLowerCase()));
+    cm.forEach(x => inv.command.add(x.name.toLowerCase()));
+  } catch {}
+  const compInstalled = c => inv[c.type]?.has(String(c.name).toLowerCase());
+  const wfStatus = w => {
+    const n = w.components.filter(compInstalled).length;
+    return { n, total: w.components.length, full: n === w.components.length };
+  };
   const section = document.getElementById('section-workflows');
   const myWfHtml = myWorkflows.length ? `
     <div style="font-size:12px;color:var(--text-dim);margin-bottom:14px;font-weight:600;text-transform:uppercase;letter-spacing:.5px">Your Workflows</div>
@@ -6191,12 +6208,20 @@ async function loadWorkflows() {
     ${myWfHtml}
     <div style="font-size:12px;color:var(--text-dim);margin-bottom:14px;font-weight:600;text-transform:uppercase;letter-spacing:.5px">Pre-built Templates</div>
     <div class="workflow-grid">
-      ${WORKFLOWS.map(w => `
+      ${WORKFLOWS.map(w => {
+        const st = wfStatus(w);
+        return `
         <div class="workflow-card" style="cursor:pointer">
           <div class="workflow-card-top" onclick="showWorkflowDetail('${w.id}')">
             <span class="workflow-card-icon">${w.icon}</span>
             <div>
-              <div class="workflow-card-name">${escHtml(w.name)}</div>
+              <div class="workflow-card-name">${escHtml(w.name)}
+                ${st.full
+                  ? '<span class="badge badge-success" style="font-size:10px;margin-left:4px">✓ installed</span>'
+                  : st.n > 0
+                    ? `<span class="badge badge-warning" style="font-size:10px;margin-left:4px">${st.n}/${st.total} installed</span>`
+                    : ''}
+              </div>
               <div class="workflow-card-tagline">${escHtml(w.tagline)}</div>
             </div>
           </div>
@@ -6204,13 +6229,16 @@ async function loadWorkflows() {
           <div class="workflow-card-badges" style="display:flex;align-items:center;justify-content:space-between;gap:6px">
             <div>${w.components.map(c => `<span class="badge ${WF_TYPE_CLASS[c.type] || 'badge-muted'}">${c.icon} ${c.type}</span>`).join('')}</div>
             <div style="display:flex;gap:5px;flex-shrink:0">
-              <button class="btn btn-run btn-sm" data-wf-run="${w.id}" title="Run this workflow one-shot with all permissions">▶ Run</button>
+              ${st.full
+                ? `<button class="btn btn-run btn-sm" data-wf-run="${w.id}" title="Run this workflow one-shot with all permissions">▶ Run</button>`
+                : `<button class="btn btn-run btn-sm" disabled title="Install this workflow first — Run needs its components on disk">▶ Run</button>
+                   <button class="btn btn-primary btn-sm" data-wf-card-install="${w.id}" title="Install all ${st.total} components; hooks are wired automatically">⬇ Install</button>`}
               <button class="btn btn-secondary btn-sm" data-wf-usage="${w.id}" title="How to invoke it — incl. the no-permissions one-shot command">📖 Usage</button>
               <button class="btn-explain" data-wf-explain="${w.id}" title="Explain with AI">🤖 Explain</button>
             </div>
           </div>
-        </div>
-      `).join('')}
+        </div>`;
+      }).join('')}
     </div>`;
 
   document.getElementById('createWorkflowBtn').onclick = openWorkflowWizard;
@@ -6243,6 +6271,36 @@ async function loadWorkflows() {
       catch (e) { toast(e.message, 'error'); }
     };
   });
+  // One-click install from the card: create every component (already-exists is
+  // fine), wire hooks to their events automatically, then refresh.
+  section.querySelectorAll('[data-wf-card-install]').forEach(btn => {
+    btn.onclick = async (e) => {
+      e.stopPropagation();
+      const w = WORKFLOWS.find(x => x.id === btn.dataset.wfCardInstall);
+      if (!w) return;
+      btn.disabled = true; btn.textContent = 'Installing…';
+      let ok = 0; const failed = [];
+      for (const comp of w.components) {
+        try {
+          try {
+            await api('POST', '/' + WF_INSTALL_API[comp.type], { name: comp.name, content: comp.content });
+          } catch (err) {
+            if (!/exists/i.test(err.message)) throw err; // already installed = fine
+          }
+          if (comp.type === 'hook' && comp.event) {
+            await api('POST', '/hooks/wire', { event: comp.event, matcher: comp.matcher || '', filename: comp.name });
+          }
+          ok++;
+        } catch (err) { failed.push(`${comp.name} (${err.message.slice(0, 40)})`); }
+      }
+      toast(failed.length
+        ? `Installed ${ok}/${w.components.length} — failed: ${failed.join(', ')}`
+        : `${w.name} installed — hooks wired automatically. ▶ Run is now enabled.`,
+        failed.length ? 'error' : 'success');
+      loadWorkflows();
+    };
+  });
+
   // Pre-built template usage (incl. copyable no-permissions one-shot command)
   section.querySelectorAll('[data-wf-usage]').forEach(btn => {
     btn.onclick = (e) => {
@@ -6370,17 +6428,29 @@ window.wfInstallOne = async function(i, workflowId) {
       btn.textContent = '✓ Done'; btn.disabled = true;
       btn.classList.remove('btn-secondary'); btn.classList.add('btn-success');
     }
-    // For hooks: show a Register button inline so user doesn't miss the wiring step
+    // Hooks: wire automatically when the template declares the event;
+    // only fall back to a manual Register button when it doesn't.
     if (comp.type === 'hook') {
-      const row = document.getElementById('wf-btn-' + i)?.closest('.wf-review-card, .wf-install-row');
-      if (row && !row.querySelector('.wf-register-btn')) {
-        const regBtn = document.createElement('button');
-        regBtn.className = 'btn btn-xs btn-warning wf-register-btn';
-        regBtn.textContent = '🔗 Register to event';
-        regBtn.onclick = () => window.wfRegisterHook(i, workflowId);
-        btn?.insertAdjacentElement('afterend', regBtn);
+      if (comp.event) {
+        try {
+          await api('POST', '/hooks/wire', { event: comp.event, matcher: comp.matcher || '', filename: comp.name });
+          toast(`${comp.name} created & wired to ${comp.event}${comp.matcher ? ' (' + comp.matcher + ')' : ''}`, 'success');
+        } catch (e2) {
+          toast(`${comp.name} created — automatic wiring failed (${e2.message}), use "Register to event"`, 'error');
+          comp._needsManualWire = true;
+        }
       }
-      toast(`${comp.name} created — click "Register to event" to wire it`, 'success');
+      if (!comp.event || comp._needsManualWire) {
+        const row = document.getElementById('wf-btn-' + i)?.closest('.wf-review-card, .wf-install-row');
+        if (row && !row.querySelector('.wf-register-btn')) {
+          const regBtn = document.createElement('button');
+          regBtn.className = 'btn btn-xs btn-warning wf-register-btn';
+          regBtn.textContent = '🔗 Register to event';
+          regBtn.onclick = () => window.wfRegisterHook(i, workflowId);
+          btn?.insertAdjacentElement('afterend', regBtn);
+        }
+        if (!comp.event) toast(`${comp.name} created — click "Register to event" to wire it`, 'success');
+      }
     } else {
       toast(comp.name + ' created');
     }
