@@ -44,7 +44,8 @@ test('run/info returns description, argument hint, and a copyable manual command
   assert.match(data.description, /Reviews a pull request/);
   assert.ok(data.argumentHint.includes('[PR number or URL]'), 'argument hint surfaced: ' + data.argumentHint);
   assert.match(data.whenToUse, /review this PR/);
-  assert.ok(data.manualCommand.startsWith('claude -p '), 'manual command provided');
+  assert.ok(data.manualCommand.startsWith('cd '), 'manual command sets the working directory first');
+  assert.ok(data.manualCommand.includes("<< 'PROMPT'"), 'prompt passed via heredoc (no quoting pitfalls)');
   assert.ok(data.manualCommand.includes('--dangerously-skip-permissions'));
   assert.ok(data.manualCommand.includes('/my-skill'));
 });
@@ -141,7 +142,7 @@ test('expected output: stated as a contract in the prompt for every kind + provi
   await waitForRun(r.data.id);
   let prompt = s.readShimPrompt();
   assert.ok(prompt.startsWith('/my-skill review PR 7'), 'invocation intact');
-  assert.match(prompt, /EXPECTED OUTPUT — .*severity-ranked markdown table in REVIEW\.md/, 'contract appended');
+  assert.match(prompt, /EXPECTED OUTPUT[\s\S]*severity-ranked markdown table in REVIEW\.md/, 'contract as its own block');
 
   // agent via CLI
   r = await s.api('POST', '/run/start', {
@@ -149,7 +150,7 @@ test('expected output: stated as a contract in the prompt for every kind + provi
     outputFile: join(s.home, 'runs', 'exp2.jsonl'), cwd: s.home,
   });
   await waitForRun(r.data.id);
-  assert.match(s.readShimPrompt(), /EXPECTED OUTPUT — .*JSON array/, 'agent runs carry the contract');
+  assert.match(s.readShimPrompt(), /EXPECTED OUTPUT[\s\S]*JSON array/, 'agent runs carry the contract');
 
   // OpenRouter text-only runs carry it too
   await s.api('PUT', '/ai-config', { openRouterKey: 'sk-x' });
@@ -160,7 +161,7 @@ test('expected output: stated as a contract in the prompt for every kind + provi
   });
   const done = await waitForRun(r.data.id);
   const assistant = JSON.parse(readFileSync(done.file, 'utf8').trim().split('\n').find(l => l.includes('assistant')) || '{}');
-  assert.match(assistant.message.content[0].text, /EXPECTED OUTPUT — deliver exactly this: three bullet points max/, 'OR prompt includes the contract');
+  assert.match(assistant.message.content[0].text, /EXPECTED OUTPUT[\s\S]*three bullet points max/, 'OR prompt includes the contract');
 
   // Without the field, no contract text leaks into the prompt
   r = await s.api('POST', '/run/start', {

@@ -2851,9 +2851,11 @@ const RUN_TIMEOUT_MS = 15 * 60 * 1000;
 
 function buildRunPrompt(kind, name, task, expectedOutput) {
   const t = (task || '').trim();
-  // The user's output contract: what the run must deliver and in what form
-  const outSpec = (expectedOutput || '').trim()
-    ? `\n\nEXPECTED OUTPUT — the run is only complete when it delivers exactly this: ${(expectedOutput || '').trim()}`
+  // The output contract lives in its own block, never inlined into the
+  // slash-command argument string.
+  const spec = (expectedOutput || '').trim();
+  const outSpec = spec
+    ? `\n\nEXPECTED OUTPUT — the run is complete only when this is delivered exactly:\n${spec}`
     : '';
   if (kind === 'skill' || kind === 'command') return (`/${name} ${t}`).trim() + outSpec;
   if (kind === 'agent') {
@@ -2893,8 +2895,16 @@ app.get('/api/run/info', (req, res) => {
     description: typeof meta.description === 'string' ? meta.description : '',
     argumentHint,
     whenToUse: typeof meta.when_to_use === 'string' ? meta.when_to_use : '',
-    // Copy-paste command to run the exact same one-shot manually in a terminal
-    manualCommand: `claude -p ${shellQuote(examplePrompt)} --dangerously-skip-permissions --output-format stream-json --verbose > run-output.jsonl`,
+    // Copy-paste command to run the exact same one-shot manually in a terminal.
+    // Heredoc form: no prompt-quoting pitfalls, cwd explicit, one flag per line.
+    manualCommand: [
+      `cd /path/to/your/project && claude -p \\`,
+      `  --dangerously-skip-permissions \\`,
+      `  --output-format stream-json --verbose \\`,
+      `  > run-output.jsonl << 'PROMPT'`,
+      examplePrompt,
+      'PROMPT',
+    ].join('\n'),
   });
 });
 
@@ -2925,7 +2935,7 @@ app.post('/api/run/start', (req, res) => {
     const run = {
       id, kind, name, file, provider: 'openrouter', cwd: workDir,
       prompt: ((task || '').trim() || 'Perform your default responsibility.')
-        + ((expectedOutput || '').trim() ? `\n\nEXPECTED OUTPUT — deliver exactly this: ${expectedOutput.trim()}` : ''),
+        + ((expectedOutput || '').trim() ? `\n\nEXPECTED OUTPUT — the run is complete only when this is delivered exactly:\n${expectedOutput.trim()}` : ''),
       startedAt: new Date().toISOString(),
       running: true, exitCode: null, error: null, lines: 0, bytes: 0, tail: [], stderr: '',
     };

@@ -2817,8 +2817,14 @@ function buildWorkflowOneShotPrompt(wf) {
 }
 
 function buildWorkflowOneShotCommand(wf) {
-  const q = s => `'` + String(s).replace(/'/g, `'\\''`) + `'`;
-  return `claude -p ${q(buildWorkflowOneShotPrompt(wf))} --dangerously-skip-permissions --output-format stream-json --verbose > ${(wf.name || 'workflow')}-run.jsonl`;
+  return [
+    `cd /path/to/your/project && claude -p \\`,
+    `  --dangerously-skip-permissions \\`,
+    `  --output-format stream-json --verbose \\`,
+    `  > ${(wf.name || 'workflow')}-run.jsonl << 'PROMPT'`,
+    buildWorkflowOneShotPrompt(wf),
+    'PROMPT',
+  ].join('\n');
 }
 
 // End-to-end invocation instructions for a workflow, from its components
@@ -2839,7 +2845,7 @@ function buildWorkflowUsageHtml(wf) {
       Use the <strong>▶ Run</strong> button on the workflow card, or from a terminal in your project folder:
     </div>
     <div style="display:flex;gap:6px;align-items:flex-start">
-      <textarea readonly rows="3" class="wf-oneshot-cmd" style="flex:1;font-family:monospace;font-size:11px;background:var(--surface2)">${escHtml(cmd)}</textarea>
+      <textarea readonly rows="8" class="wf-oneshot-cmd" style="flex:1;font-family:monospace;font-size:11px;background:var(--surface2)">${escHtml(cmd)}</textarea>
       <button class="btn btn-secondary btn-sm" data-copy-oneshot="${escHtml(cmd)}">Copy</button>
     </div>
     <div style="font-size:11px;color:var(--warning);margin-top:6px">⚠ <code>--dangerously-skip-permissions</code> means no confirmation prompts — only run in a project you trust it with.</div>
@@ -4806,12 +4812,35 @@ function buildManualRunCmd() {
   const expected = document.getElementById('runExpected')?.value.trim() || '';
   const file = document.getElementById('runOutputFile').value.trim() || 'run-output.jsonl';
   const model = document.getElementById('runCliModel')?.value || '';
-  let prompt = (kind === 'skill' || kind === 'command') ? `/${name} ${task}`.trim()
-    : kind === 'agent' ? `Act as the "${name}" agent defined in ~/.claude/agents/${name}.md.${task ? ' Task: ' + task : ''}`
-    : (task || `Execute the "${name}" workflow.`);
-  if (expected) prompt += ` EXPECTED OUTPUT: ${expected}`;
-  const q = s => `'` + String(s).replace(/'/g, `'\\''`) + `'`;
-  return `claude -p ${q(prompt)} --dangerously-skip-permissions --output-format stream-json --verbose${model ? ' --model ' + model : ''} > ${q(file)}`;
+  const cwd = document.getElementById('runCwd')?.value.trim() || '~';
+
+  // Prompt as clean lines — the heredoc removes all quoting pitfalls
+  const promptLines = [];
+  if (kind === 'skill' || kind === 'command') promptLines.push(`/${name}${task ? ' ' + task : ''}`);
+  else if (kind === 'agent') {
+    promptLines.push(`Act as the "${name}" agent defined in ~/.claude/agents/${name}.md. Follow its steps and output contract exactly.`);
+    if (task) promptLines.push('', 'Task: ' + task);
+  } else {
+    promptLines.push(task || `Execute the "${name}" workflow.`);
+  }
+  if (expected) promptLines.push('', 'EXPECTED OUTPUT — the run is complete only when this is delivered exactly:', expected);
+
+  // Paths: quote safely, but keep a leading ~ expandable
+  const qp = (s) => {
+    s = String(s);
+    if (/^~($|\/)/.test(s)) return s.replace(/([ '"$`\\])/g, '\\$1'); // ~ must stay unquoted to expand
+    return `'` + s.replace(/'/g, `'\\''`) + `'`;
+  };
+
+  return [
+    `cd ${qp(cwd)} && claude -p \\`,
+    `  --dangerously-skip-permissions \\`,
+    `  --output-format stream-json --verbose \\`,
+    ...(model ? [`  --model ${model} \\`] : []),
+    `  > ${qp(file)} << 'PROMPT'`,
+    ...promptLines,
+    'PROMPT',
+  ].join('\n');
 }
 
 function refreshManualRunCmd() {
@@ -4820,6 +4849,8 @@ function refreshManualRunCmd() {
 }
 document.getElementById('runTask').addEventListener('input', refreshManualRunCmd);
 document.getElementById('runExpected').addEventListener('input', refreshManualRunCmd);
+document.getElementById('runCwd').addEventListener('input', refreshManualRunCmd);
+document.getElementById('runCliModel').addEventListener('change', refreshManualRunCmd);
 document.getElementById('runOutputFile').addEventListener('input', refreshManualRunCmd);
 document.getElementById('runManualCopy').onclick = () => {
   navigator.clipboard.writeText(document.getElementById('runManualCmd').value)
