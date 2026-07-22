@@ -40,20 +40,8 @@
     <button class="nav-item active" data-section="overview">
       <span class="nav-icon">🏠</span> Overview
     </button>
-    <button class="nav-item" data-section="claude-md">
-      <span class="nav-icon">📄</span> CLAUDE.md
-    </button>
 
-    <div class="nav-section-label">Configuration</div>
-    <button class="nav-item" data-section="settings">
-      <span class="nav-icon">⚙️</span> Settings
-    </button>
-    <button class="nav-item" data-section="hooks">
-      <span class="nav-icon">🔗</span> Hooks
-      <span class="nav-badge" id="badge-hooks">0</span>
-    </button>
-
-    <div class="nav-section-label">Extensions</div>
+    <div class="nav-section-label">Build</div>
     <button class="nav-item" data-section="skills">
       <span class="nav-icon">🧩</span> Skills
       <span class="nav-badge" id="badge-skills">0</span>
@@ -62,22 +50,38 @@
       <span class="nav-icon">🤖</span> Agents
       <span class="nav-badge" id="badge-agents">0</span>
     </button>
-    <button class="nav-item" data-section="plugins">
-      <span class="nav-icon">🔌</span> Plugins
-      <span class="nav-badge" id="badge-plugins">0</span>
+    <button class="nav-item" data-section="hooks">
+      <span class="nav-icon">🔗</span> Hooks
+      <span class="nav-badge" id="badge-hooks">0</span>
     </button>
     <button class="nav-item" data-section="commands">
       <span class="nav-icon">⌨️</span> Commands
       <span class="nav-badge" id="badge-commands">0</span>
     </button>
+    <button class="nav-item" data-section="workflows">
+      <span class="nav-icon">🔄</span> Workflows
+    </button>
+
+    <div class="nav-section-label">Extend</div>
+    <button class="nav-item" data-section="plugins">
+      <span class="nav-icon">🔌</span> Plugins
+      <span class="nav-badge" id="badge-plugins">0</span>
+    </button>
+
+    <div class="nav-section-label">Configure</div>
+    <button class="nav-item" data-section="claude-md">
+      <span class="nav-icon">📄</span> CLAUDE.md
+    </button>
+    <button class="nav-item" data-section="settings">
+      <span class="nav-icon">⚙️</span> Settings
+    </button>
     <button class="nav-item" data-section="keybindings">
       <span class="nav-icon">🎹</span> Keybindings
     </button>
+
+    <div class="nav-section-label">Learn</div>
     <button class="nav-item" data-section="examples">
       <span class="nav-icon">📚</span> Examples
-    </button>
-    <button class="nav-item" data-section="workflows">
-      <span class="nav-icon">🔄</span> Workflows
     </button>
   </nav>
 
@@ -88,11 +92,71 @@
     <div class="section active" id="section-overview">
       <div class="section-header">
         <div>
-          <div class="section-title">Overview</div>
+          <div class="section-title">Your Claude Code setup</div>
           <div class="section-subtitle" id="overview-path"></div>
         </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-secondary" onclick="openComposeModal()">🧬 Compose Workflow</button>
+          <button class="btn btn-primary" onclick="showSkillGenerator('skill')">✨ Generate with AI</button>
+        </div>
       </div>
+
       <div class="stat-grid" id="stat-grid"></div>
+
+      <!-- How the pieces fit together — the conceptual model in one glance -->
+      <div style="font-size:12px;color:var(--text-dim);font-weight:600;text-transform:uppercase;letter-spacing:.5px">How the pieces fit together</div>
+      <div class="ov-concept-grid">
+        <div class="ov-concept" onclick="navigate('skills')">
+          <div class="ov-concept-head">🧩 Skills</div>
+          <div class="ov-concept-body">Reusable know-how Claude applies automatically when your request matches — or on demand via <code>/skill-name</code>.</div>
+        </div>
+        <div class="ov-concept" onclick="navigate('agents')">
+          <div class="ov-concept-head">🤖 Agents</div>
+          <div class="ov-concept-body">Specialists Claude delegates to — each with its own instructions and tool limits, for one job done well.</div>
+        </div>
+        <div class="ov-concept" onclick="navigate('hooks')">
+          <div class="ov-concept-head">🔗 Hooks</div>
+          <div class="ov-concept-body">Scripts that fire automatically at lifecycle events — block dangerous commands, auto-run tests, log everything.</div>
+        </div>
+        <div class="ov-concept" onclick="navigate('commands')">
+          <div class="ov-concept-head">⌨️ Commands</div>
+          <div class="ov-concept-body">Your own <code>/slash-commands</code> — a typed shortcut that runs a whole scripted procedure.</div>
+        </div>
+        <div class="ov-concept" onclick="navigate('plugins')">
+          <div class="ov-concept-head">🔌 Plugins &amp; MCP</div>
+          <div class="ov-concept-body">External powers: tools Claude can call (GitHub, databases, browsers…) and installable plugin bundles.</div>
+        </div>
+        <div class="ov-concept" onclick="navigate('workflows')">
+          <div class="ov-concept-head">🔄 Workflows</div>
+          <div class="ov-concept-body">All of the above working as one system — installed together, runnable end-to-end with a single command.</div>
+        </div>
+      </div>
+
+      <!-- Getting started — concrete first moves, not abstractions -->
+      <div style="font-size:12px;color:var(--text-dim);font-weight:600;text-transform:uppercase;letter-spacing:.5px">Good first moves</div>
+      <div class="ov-start-grid">
+        <div class="ov-start">
+          <div class="ov-start-title">1 · Describe it, get it built</div>
+          <div class="ov-start-body">Tell the AI what you want in plain language — "a skill that writes my commit messages" — review the file it produces, save. Works for skills, agents, hooks &amp; commands.</div>
+          <button class="btn btn-secondary btn-sm" onclick="showSkillGenerator('skill')">✨ Try the generator</button>
+        </div>
+        <div class="ov-start">
+          <div class="ov-start-title">2 · Install a ready-made workflow</div>
+          <div class="ov-start-body">One click installs a coordinated set — e.g. Security Guardian blocks dangerous commands and protects secrets from the moment it lands.</div>
+          <button class="btn btn-secondary btn-sm" onclick="navigate('workflows')">🔄 Browse templates</button>
+        </div>
+        <div class="ov-start">
+          <div class="ov-start-title">3 · Set your guardrails</div>
+          <div class="ov-start-body">Decide what Claude may do without asking — allow all git commands, make <code>.env</code> unreadable. Plain-language changes via "Add with AI".</div>
+          <button class="btn btn-secondary btn-sm" onclick="navigate('settings')">⚙️ Open Settings</button>
+        </div>
+        <div class="ov-start">
+          <div class="ov-start-title">4 · Learn from worked examples</div>
+          <div class="ov-start-body">Fully annotated real-world skills, hooks and custom events — every line explained, installable with one click.</div>
+          <button class="btn btn-secondary btn-sm" onclick="navigate('examples')">📚 Open Examples</button>
+        </div>
+      </div>
+
       <div class="card" id="overview-info"></div>
     </div>
 

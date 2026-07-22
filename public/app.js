@@ -684,14 +684,23 @@ async function loadOverview() {
         ${sub ? `<div style="font-size:10px;color:var(--text-dim);margin-top:2px">${sub}</div>` : ''}
       </div>`
     ).join('');
+    let ai = {};
+    try { ai = await api('GET', '/ai-config'); } catch {}
     document.getElementById('overview-info').innerHTML = `
+      <div style="font-weight:650;font-size:13px;margin-bottom:12px">System status</div>
       <div style="display:flex;flex-direction:column;gap:10px">
         ${[
-          ['Model',       `<span class="badge badge-accent">${d.model || 'default'}</span>`],
-          ['CLAUDE.md',   `<span class="badge ${d.hasClaudeMd ? 'badge-success' : 'badge-muted'}">${d.hasClaudeMd ? 'Present' : 'Missing'}</span>`],
-          ['Keybindings', `<span class="badge ${d.hasKeybindings ? 'badge-success' : 'badge-muted'}">${d.hasKeybindings ? 'Configured' : 'Default'}</span>`],
-          ['Hook Files',  `<span class="badge badge-muted">${d.hookFiles} file${d.hookFiles !== 1 ? 's' : ''}</span>`],
-        ].map(([k, v]) => `<div style="display:flex;justify-content:space-between;align-items:center"><span class="text-muted">${k}</span>${v}</div>`).join('')}
+          ['Default model', `<span class="badge badge-accent">${d.model || 'default'}</span>`],
+          ['Claude CLI', ai.claudeCli
+            ? '<span class="badge badge-success">✓ installed — full AI runs available</span>'
+            : '<span class="badge badge-warning">not found — AI features use OpenRouter</span>'],
+          ['OpenRouter key', ai.hasOpenRouterKey
+            ? '<span class="badge badge-success">✓ configured (stored outside the repo)</span>'
+            : '<span class="badge badge-muted">not set — add in Settings → AI Generation</span>'],
+          ['CLAUDE.md', `<span class="badge ${d.hasClaudeMd ? 'badge-success' : 'badge-muted'}">${d.hasClaudeMd ? 'Present' : 'Missing — Claude has no global instructions yet'}</span>`],
+          ['Keybindings', `<span class="badge ${d.hasKeybindings ? 'badge-success' : 'badge-muted'}">${d.hasKeybindings ? 'Customized' : 'Defaults'}</span>`],
+          ['Hook files', `<span class="badge badge-muted">${d.hookFiles || 0} file${d.hookFiles !== 1 ? 's' : ''} · ${d.hookEvents || 0} event${d.hookEvents !== 1 ? 's' : ''} wired</span>`],
+        ].map(([k, v]) => `<div style="display:flex;justify-content:space-between;align-items:center;gap:10px"><span class="text-muted" style="font-size:13px">${k}</span>${v}</div>`).join('')}
       </div>`;
   } catch (e) { toast('Overview error: ' + e.message, 'error'); }
 }

@@ -70,7 +70,7 @@ The folder choice persists in `claude-manager.config.json` (gitignored). Your Op
 
 | Section | What you do there |
 |---|---|
-| **Overview** | Counts of everything installed, at a glance |
+| **Overview** | Stats, how-the-pieces-fit concept map, guided first moves, system status |
 | **Skills / Agents / Commands** | Cards with Run, Files, Explain, Improve, Edit, Delete; store tabs to install more |
 | **Hooks** | Hook files + event wiring; template gallery; AI generation; "elsewhere" panel for hooks inside skills/plugins |
 | **Plugins** | Installed list with counts/descriptions/actions; marketplace with custom sources; guided MCP add |
@@ -87,7 +87,7 @@ Any modal with a provider picker (Generate, Run, Compose) auto-detects: if the C
 npm test
 ```
 
-189 tests (Node's built-in `node --test`) covering every endpoint and scenario. Each test file boots an isolated server with its own temp `.claude` folder, temp `HOME`, isolated config, a local fixture marketplace/OpenRouter endpoint, and a fake `claude` CLI shim that records invocations — no network or real Claude Code install needed. See [`tests/README.md`](tests/README.md) for the full bug-fix history and scenario list.
+190 tests (Node's built-in `node --test`) covering every endpoint and scenario. Each test file boots an isolated server with its own temp `.claude` folder, temp `HOME`, isolated config, a local fixture marketplace/OpenRouter endpoint, and a fake `claude` CLI shim that records invocations — no network or real Claude Code install needed. See [`tests/README.md`](tests/README.md) for the full bug-fix history and scenario list.
 
 ## Security notes
 

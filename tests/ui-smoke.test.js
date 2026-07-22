@@ -76,6 +76,15 @@ test('every provider-capable modal exposes an OpenRouter config block', (t) => {
   }
 });
 
+test('overview: concept map + getting-started render, nav order Build-first', async (t) => {
+  if (skipIfNoDom(t)) return;
+  assert.equal(w.document.querySelectorAll('.ov-concept').length, 6, 'six concept cards');
+  assert.equal(w.document.querySelectorAll('.ov-start').length, 4, 'four getting-started moves');
+  const order = [...w.document.querySelectorAll('#sidebar .nav-item')].map(b => b.dataset.section);
+  assert.deepEqual(order, ['overview', 'skills', 'agents', 'hooks', 'commands', 'workflows', 'plugins', 'claude-md', 'settings', 'keybindings', 'examples'],
+    'workflows follows commands; keybindings and examples in separate groups');
+});
+
 test('workflow templates: Run disabled + Install shown until components exist', async (t) => {
   if (skipIfNoDom(t)) return;
   await w.eval('loadWorkflows()');

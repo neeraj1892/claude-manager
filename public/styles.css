@@ -1668,3 +1668,41 @@ body.light {
   box-shadow: none !important;
   pointer-events: auto; /* keep hover so the title tooltip shows why */
 }
+
+/* Overview: conceptual-model + getting-started grids */
+.ov-concept-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px;
+}
+.ov-concept {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 13px 15px;
+  cursor: pointer;
+  transition: border-color .15s, box-shadow .18s, transform .15s;
+}
+.ov-concept:hover { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); box-shadow: var(--shadow-sm); transform: translateY(-1px); }
+.ov-concept-head { font-weight: 650; font-size: 13.5px; margin-bottom: 4px; }
+.ov-concept-body { font-size: 12px; color: var(--text-muted); line-height: 1.5; }
+.ov-concept-body code { font-size: 11px; background: color-mix(in srgb, var(--text) 8%, transparent); padding: 1px 4px; border-radius: 4px; }
+body.light .ov-concept { border-color: transparent; box-shadow: 0 1px 3px rgba(0,0,0,0.05), 0 4px 14px rgba(0,0,0,0.04); }
+
+.ov-start-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+}
+.ov-start {
+  background: var(--grad-soft, var(--accent-dim));
+  border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--border));
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.ov-start-title { font-weight: 650; font-size: 13px; }
+.ov-start-body { font-size: 12px; color: var(--text-muted); line-height: 1.55; flex: 1; }
+.ov-start .btn { align-self: flex-start; }
