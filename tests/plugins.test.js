@@ -187,6 +187,35 @@ test('uninstall tolerates CLI "plugin not found" errors (still cleans local reco
   assert.ok(!('ghost-plugin' in (after_.enabledPlugins || {})));
 });
 
+test('MCP servers in settings.local.json are listed and removable', async () => {
+  seed(join(s.claudeDir, 'settings.local.json'), { mcpServers: { 'local-override-mcp': { type: 'stdio', command: 'npx' } } });
+  const { data } = await s.api('GET', '/plugins');
+  const p = data.find(x => x.id === 'local-override-mcp');
+  assert.ok(p, 'settings.local.json MCP server listed');
+  assert.equal(p.configFile, 'settings.local.json');
+  const del = await s.api('DELETE', '/plugins/local-override-mcp/mcp');
+  assert.equal(del.status, 200);
+  assert.equal(del.data.configFile, 'settings.local.json');
+});
+
+test('MCP servers in project-scope .mcp.json files are discovered via the projects index', async () => {
+  const { mkdirSync: mk } = require('fs');
+  const projDir = join(s.root, 'some-project');
+  mk(projDir, { recursive: true });
+  seed(join(projDir, '.mcp.json'), { mcpServers: { 'project-mcp': { type: 'stdio', command: 'npx', args: ['-y', 'proj-mcp'] } } });
+  const g = JSON.parse(readFileSync(join(s.home, '.claude.json'), 'utf8'));
+  g.projects = { ...(g.projects || {}), [projDir]: {} };
+  seed(join(s.home, '.claude.json'), g);
+  const { data } = await s.api('GET', '/plugins');
+  const p = data.find(x => x.id === 'project-mcp');
+  assert.ok(p, 'project .mcp.json server listed: ' + data.map(x => x.id).join(', '));
+  assert.equal(p.scope, 'project');
+  assert.ok(p.configFile.includes('.mcp.json'));
+  // ...and it counts on the overview
+  const { data: overview } = await s.api('GET', '/overview');
+  assert.ok(overview.mcpServers >= 2, 'overview counts project-scope servers too');
+});
+
 test('REGRESSION: overview plugin/MCP counts match the Plugins tab exactly', async () => {
   const [{ data: overview }, { data: plugins }] = await Promise.all([
     s.api('GET', '/overview'), s.api('GET', '/plugins'),

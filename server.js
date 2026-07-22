@@ -1001,6 +1001,41 @@ function collectGlobalMcpServers() {
   return out;
 }
 
+// EVERY location Claude Code reads MCP servers from:
+//   1. <claudeDir>/settings.json         (user scope)
+//   2. <claudeDir>/settings.local.json   (user local overrides)
+//   3. ~/.claude.json mcpServers         (user scope via `claude mcp add -s user`)
+//   4. ~/.claude.json projects[*]        (local scope — `claude mcp add` default)
+//   5. <project>/.mcp.json               (project scope, shared via git) — projects
+//      discovered from the ~/.claude.json projects index
+function collectAllMcpServers() {
+  const out = [];
+  const seen = new Set();
+  const push = (id, cfg, configFile, scope) => {
+    if (!id || seen.has(id)) return;
+    seen.add(id);
+    out.push({ id, cfg: cfg || {}, configFile, scope });
+  };
+  const fromFile = (file, label, scope) => {
+    const data = readJson(file, {});
+    Object.entries(data.mcpServers || {}).forEach(([id, cfg]) => push(id, cfg, label, scope));
+  };
+  fromFile(join(claudeDir, 'settings.json'), 'settings.json', 'user');
+  fromFile(join(claudeDir, 'settings.local.json'), 'settings.local.json', 'user');
+  collectGlobalMcpServers().forEach(({ id, cfg, configFile, scope }) => push(id, cfg, configFile, scope));
+  // Project-scope .mcp.json files, found via the global projects index
+  const globalCfg = readGlobalClaudeJson();
+  Object.keys(globalCfg.projects || {}).slice(0, 100).forEach(projPath => {
+    try {
+      const mcpFile = join(projPath, '.mcp.json');
+      if (!existsSync(mcpFile)) return;
+      const data = readJson(mcpFile, {});
+      Object.entries(data.mcpServers || {}).forEach(([id, cfg]) => push(id, cfg, `.mcp.json (${projPath})`, 'project'));
+    } catch {}
+  });
+  return out;
+}
+
 // Plugin descriptions: read marketplace manifests that `claude plugin
 // marketplace add` stores on disk, so each installed plugin can show what it does.
 function getPluginDescriptions() {
@@ -1067,26 +1102,7 @@ function listAllPlugins() {
 
   // MCP servers from settings.json AND global ~/.claude.json
   const knownIds = new Set(result.map(p => p.id));
-  const addMcpServers = (servers, configFile) => {
-    Object.entries(servers || {}).forEach(([id, cfg]) => {
-      if (knownIds.has(id)) return;
-      knownIds.add(id);
-      result.push({
-        id, isMcpServer: true,
-        description: describeMcpServer(id, cfg),
-        version: null,
-        scope: 'user',
-        installedAt: null,
-        lastUpdated: null,
-        enabled: true,
-        mcpType: cfg.type || 'stdio',
-        mcpCommand: cfg.command || cfg.url || '',
-        configFile,
-      });
-    });
-  };
-  addMcpServers(settings.mcpServers, 'settings.json');
-  collectGlobalMcpServers().forEach(({ id, cfg, configFile, scope }) => {
+  collectAllMcpServers().forEach(({ id, cfg, configFile, scope }) => {
     if (knownIds.has(id)) return;
     knownIds.add(id);
     result.push({
@@ -1115,6 +1131,13 @@ app.delete('/api/plugins/:id/mcp', (req, res) => {
     delete settings.mcpServers[id];
     writeJson(settingsPath, settings);
     return res.json({ ok: true, configFile: 'settings.json' });
+  }
+  const localPath = join(claudeDir, 'settings.local.json');
+  const localSettings = readJson(localPath, null);
+  if (localSettings?.mcpServers?.[id]) {
+    delete localSettings.mcpServers[id];
+    writeJson(localPath, localSettings);
+    return res.json({ ok: true, configFile: 'settings.local.json' });
   }
   // Fall back to the global ~/.claude.json (where `claude mcp add` writes) —
   // both user scope (top-level mcpServers) and local scope (projects[*].mcpServers)
@@ -1617,11 +1640,8 @@ function collectMcpAndPlugins() {
   const settings = readJson(join(claudeDir, 'settings.json'));
   const descs = getPluginDescriptions();
   const out = [];
-  Object.entries(settings.mcpServers || {}).forEach(([id, cfg]) =>
+  collectAllMcpServers().forEach(({ id, cfg }) =>
     out.push({ name: id, kind: 'mcp', description: describeMcpServer(id, cfg) }));
-  collectGlobalMcpServers().forEach(({ id, cfg }) => {
-    if (!out.some(x => x.name === id)) out.push({ name: id, kind: 'mcp', description: describeMcpServer(id, cfg) });
-  });
   const pluginData = readJson(join(claudeDir, 'plugins', 'installed_plugins.json'), {});
   new Set([...Object.keys(settings.enabledPlugins || {}), ...Object.keys(pluginData.plugins || {})]).forEach(id => {
     out.push({ name: id, kind: 'plugin', description: descs[id.toLowerCase()] || descs[id.split('@')[0].toLowerCase()] || 'Claude Code plugin' });
@@ -1975,8 +1995,7 @@ function getInstalledKeySet() {
   const keys = new Set();
   const settings = readJson(join(claudeDir, 'settings.json'));
   const pluginData = readJson(join(claudeDir, 'plugins', 'installed_plugins.json'), {});
-  Object.keys(settings.mcpServers || {}).forEach(k => keys.add(k.toLowerCase()));
-  collectGlobalMcpServers().forEach(({ id }) => keys.add(id.toLowerCase()));
+  collectAllMcpServers().forEach(({ id }) => keys.add(id.toLowerCase()));
   [...Object.keys(settings.enabledPlugins || {}),
    ...Object.keys(pluginData.plugins || {}),
    ...Object.keys(pluginData.enabledPlugins || {})]
