@@ -134,6 +134,26 @@ test('hooks: unparseable settings.json is surfaced instead of silently hiding co
   assert.equal(after_.data.settingsError, null);
 });
 
+test('files: PUT creates a brand-new nested file, directories included', async () => {
+  const rel = 'skills/deep-skill/references/new/notes.md';
+  const p = await s.api('PUT', '/files', { path: rel, content: 'fresh' });
+  assert.equal(p.status, 200);
+  assert.equal(readFileSync(join(s.claudeDir, rel), 'utf8'), 'fresh');
+});
+
+test('files: GET on a directory -> 404; tree on a file -> 404', async () => {
+  assert.equal((await s.api('GET', '/files?path=' + encodeURIComponent('skills/deep-skill'))).status, 404);
+  assert.equal((await s.api('GET', '/files/tree?dir=' + encodeURIComponent('skills/deep-skill/SKILL.md'))).status, 404);
+});
+
+test('agents: inline "tools: Read, Bash" frontmatter is normalized to a list', async () => {
+  writeFileSync(join(s.claudeDir, 'agents', 'tooled.md'),
+    '---\nname: tooled\ndescription: has inline tools\ntools: Read, Bash, WebFetch\n---\nBody');
+  const { data } = await s.api('GET', '/agents');
+  const a = data.find(x => x.name === 'tooled');
+  assert.deepEqual(a.tools, ['Read', 'Bash', 'WebFetch']);
+});
+
 test('files: validation and safety', async () => {
   assert.equal((await s.api('GET', '/files')).status, 400, 'path required');
   assert.equal((await s.api('GET', '/files?path=nope.txt')).status, 404);

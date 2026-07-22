@@ -564,6 +564,14 @@ function formatSize(bytes) {
   return (bytes / 1024 / 1024).toFixed(1) + ' MB';
 }
 
+// Frontmatter `tools:` can be an inline string ("Read, Bash") or a YAML list —
+// normalize both to an array so the UI can count/display them.
+function normalizeTools(tools) {
+  if (Array.isArray(tools)) return tools;
+  if (typeof tools === 'string' && tools.trim()) return tools.split(',').map(s => s.trim()).filter(Boolean);
+  return [];
+}
+
 function parseFrontmatter(content) {
   const lines = content.split('\n');
   const meta = {};
@@ -2269,7 +2277,7 @@ app.get('/api/agents', (req, res) => {
           path: 'agents/' + rel,
           description: (meta.description || '').slice(0, 120),
           model: meta.model || '',
-          tools: Array.isArray(meta.tools) ? meta.tools : [],
+          tools: normalizeTools(meta.tools),
           size: formatSize(stat.size),
           modified: stat.mtime.toISOString(),
         });
@@ -2299,7 +2307,7 @@ app.get('/api/agents', (req, res) => {
           locationLabel: rel.split('/').slice(0, 2).join('/'),
           description: (meta.description || '').slice(0, 120),
           model: meta.model || '',
-          tools: Array.isArray(meta.tools) ? meta.tools : [],
+          tools: normalizeTools(meta.tools),
           size: formatSize(stat.size),
           modified: stat.mtime.toISOString(),
         });

@@ -176,6 +176,33 @@ test('openrouter run: per-run model override is honored', async () => {
   assert.match(assistant.message.content[0].text, /model=openai\/gpt-4o-mini/, 'override model sent to OpenRouter');
 });
 
+test('workflow run with empty task falls back to a sensible default prompt', async () => {
+  const r = await s.api('POST', '/run/start', {
+    kind: 'workflow', name: 'Smart Commit', task: '', outputFile: join(s.home, 'runs', 'wf-default.jsonl'), cwd: s.home,
+  });
+  await waitForRun(r.data.id);
+  assert.match(s.readShimPrompt(), /Execute the "Smart Commit" workflow/);
+});
+
+test('agent run with empty task uses the default-responsibility prompt', async () => {
+  const r = await s.api('POST', '/run/start', {
+    kind: 'agent', name: 'reviewer', task: '', outputFile: join(s.home, 'runs', 'agent-default.jsonl'), cwd: s.home,
+  });
+  await waitForRun(r.data.id);
+  assert.match(s.readShimPrompt(), /default responsibility/);
+});
+
+test('stop on an already-finished run is a harmless no-op', async () => {
+  const r = await s.api('POST', '/run/start', {
+    kind: 'skill', name: 'my-skill', task: 'x', outputFile: join(s.home, 'runs', 'stop-late.jsonl'), cwd: s.home,
+  });
+  await waitForRun(r.data.id);
+  const stop = await s.api('POST', `/run/${r.data.id}/stop`, {});
+  assert.equal(stop.status, 200);
+  const after_ = await s.api('GET', '/run/' + r.data.id);
+  assert.equal(after_.data.exitCode, 0, 'finished run not marked as errored by a late stop');
+});
+
 test('GET /api/runs lists past runs; unknown run id -> 404', async () => {
   const { status, data } = await s.api('GET', '/runs');
   assert.equal(status, 200);

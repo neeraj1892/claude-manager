@@ -56,6 +56,25 @@ test('hooks: wire event settings into settings.json', async () => {
   assert.ok(data.settings.PreToolUse);
 });
 
+test('hooks: POST without content writes the starter template', async () => {
+  const { status } = await s.api('POST', '/hooks/files', { name: 'templated.mjs' });
+  assert.equal(status, 201);
+  const { data } = await s.api('GET', '/hooks');
+  const f = data.files.find(x => x.name === 'templated.mjs');
+  assert.ok(f.content.includes('#!/usr/bin/env node'), 'template shebang present');
+  assert.ok(f.content.includes('templated.mjs'), 'template mentions the filename');
+  await s.api('DELETE', '/hooks/files/templated.mjs');
+});
+
+test('agents: POST without content writes a frontmatter starter', async () => {
+  const { status } = await s.api('POST', '/agents', { name: 'starter-agent' });
+  assert.equal(status, 201);
+  const g = await s.api('GET', '/agents/starter-agent');
+  assert.ok(g.data.content.startsWith('---'), 'starter has frontmatter');
+  assert.ok(g.data.content.includes('starter-agent'));
+  await s.api('DELETE', '/agents/starter-agent');
+});
+
 test('hooks: python and shell files accepted', async () => {
   assert.equal((await s.api('POST', '/hooks/files', { name: 'log.py' })).status, 201);
   assert.equal((await s.api('POST', '/hooks/files', { name: 'guard.sh' })).status, 201);

@@ -1,11 +1,34 @@
 'use strict';
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
+const http = require('http');
 const { startServer } = require('./helper');
 
-let s;
-before(async () => { s = await startServer(4650, { seedSkillCreator: true }); });
-after(() => s.stop());
+let s, orServer;
+const OR_PORT = 4655;
+
+before(async () => {
+  // Fixture OpenRouter endpoint: returns prose for PROSE_TEST prompts,
+  // valid SKILL.md frontmatter otherwise.
+  orServer = http.createServer((req, res) => {
+    let body = '';
+    req.on('data', c => body += c);
+    req.on('end', () => {
+      const userMsg = (JSON.parse(body).messages || []).map(m => m.content).join('\n');
+      res.setHeader('Content-Type', 'application/json');
+      const content = userMsg.includes('PROSE_TEST')
+        ? 'Sure! I would be happy to describe a skill for you. It would...'
+        : '---\nname: or-generated\ndescription: generated via openrouter fixture\n---\n\n# OR Skill';
+      res.end(JSON.stringify({ choices: [{ message: { content } }] }));
+    });
+  });
+  await new Promise(r => orServer.listen(OR_PORT, r));
+  s = await startServer(4650, {
+    seedSkillCreator: true,
+    env: { OPENROUTER_ENDPOINT: `http://127.0.0.1:${OR_PORT}/api/v1/chat/completions` },
+  });
+});
+after(() => { s.stop(); orServer.close(); });
 
 test('ai-config reports claude CLI available (shim on PATH)', async () => {
   const { data } = await s.api('GET', '/ai-config');
@@ -136,4 +159,71 @@ test('ai-config PUT stores openrouter key and model', async () => {
   assert.equal(status, 200);
   const { data } = await s.api('GET', '/ai-config');
   assert.equal(data.hasOpenRouterKey, true);
+});
+
+// ── OpenRouter provider paths (fixture endpoint) ──
+
+test('generate-skill via openrouter returns fixture content', async () => {
+  const { status, data } = await s.api('POST', '/ai/generate-skill', { prompt: 'make a skill', provider: 'openrouter', type: 'skill' });
+  assert.equal(status, 200, JSON.stringify(data));
+  assert.ok(data.content.startsWith('---'));
+  assert.match(data.content, /or-generated/);
+});
+
+test('generate-skill via openrouter: prose response is rejected with a clear error', async () => {
+  const { status, data } = await s.api('POST', '/ai/generate-skill', { prompt: 'PROSE_TEST please', provider: 'openrouter', type: 'skill' });
+  assert.equal(status, 500);
+  assert.match(data.error, /description instead of file content/);
+});
+
+test('improve-skill via openrouter works', async () => {
+  const { status, data } = await s.api('POST', '/ai/improve-skill', { content: '---\nname: x\n---\nbody', provider: 'openrouter', type: 'skill' });
+  assert.equal(status, 200);
+  assert.ok(data.content.length > 0);
+});
+
+// ── Hook language selection ──
+
+test('hookLang .py selects the Python system prompt', async () => {
+  const { status } = await s.api('POST', '/ai/generate-skill', { prompt: 'log writes', provider: 'claude-cli', type: 'hook', hookLang: '.py' });
+  assert.equal(status, 200);
+  assert.ok(s.readShimPrompt().includes('Python 3 hooks'), 'python prompt used');
+});
+
+test('hookLang .sh selects the Bash system prompt', async () => {
+  const { status } = await s.api('POST', '/ai/generate-skill', { prompt: 'guard commands', provider: 'claude-cli', type: 'hook', hookLang: '.sh' });
+  assert.equal(status, 200);
+  assert.ok(s.readShimPrompt().includes('Bash shell hooks'), 'bash prompt used');
+});
+
+// ── Output hygiene ──
+
+test('code-fence-wrapped AI output is stripped to raw content', async () => {
+  const { status, data } = await s.api('POST', '/ai/generate-skill', { prompt: 'FENCED_TEST make it', provider: 'claude-cli', type: 'skill' });
+  assert.equal(status, 200, JSON.stringify(data));
+  assert.ok(data.content.startsWith('---'), 'fence stripped, starts with frontmatter: ' + data.content.slice(0, 30));
+  assert.ok(!data.content.includes('```'), 'no fences remain');
+});
+
+// ── Improve with feedback, Explain, full workflow generation ──
+
+test('improve-skill forwards user feedback and original content to the model', async () => {
+  await s.api('POST', '/ai/improve-skill', { content: 'ORIGINAL_CONTENT_MARKER body', feedback: 'FEEDBACK_MARKER: sharpen triggers', provider: 'claude-cli', type: 'skill' });
+  const prompt = s.readShimPrompt();
+  assert.ok(prompt.includes('FEEDBACK_MARKER'), 'feedback included');
+  assert.ok(prompt.includes('ORIGINAL_CONTENT_MARKER'), 'original content included');
+});
+
+test('explain endpoint returns an explanation', async () => {
+  const { status, data } = await s.api('POST', '/ai/explain', { content: '---\nname: x\n---\nbody', type: 'skill', provider: 'claude-cli' });
+  assert.equal(status, 200);
+  assert.ok(data.explanation.length > 0);
+  assert.equal((await s.api('POST', '/ai/explain', {})).status, 400);
+});
+
+test('generate-workflow (full) returns a component list', async () => {
+  const { status, data } = await s.api('POST', '/ai/generate-workflow', { goal: 'automate reviews', provider: 'claude-cli' });
+  assert.equal(status, 200, JSON.stringify(data));
+  assert.ok(Array.isArray(data.components) && data.components.length >= 1);
+  assert.equal((await s.api('POST', '/ai/generate-workflow', {})).status, 400);
 });

@@ -155,3 +155,41 @@ test('overview counts plugins including enabledPlugins-only entries', async () =
   assert.equal(typeof data.plugins, 'number');
   assert.ok(data.plugins >= 1);
 });
+
+test('MCP server present in BOTH settings.json and ~/.claude.json appears once (settings wins)', async () => {
+  const settings = JSON.parse(readFileSync(join(s.claudeDir, 'settings.json'), 'utf8'));
+  settings.mcpServers = { ...(settings.mcpServers || {}), 'both-places': { type: 'stdio', command: 'npx' } };
+  seed(join(s.claudeDir, 'settings.json'), settings);
+  seed(join(s.home, '.claude.json'), { mcpServers: { 'both-places': { type: 'stdio', command: 'other' } } });
+  const { data } = await s.api('GET', '/plugins');
+  const matches = data.filter(p => p.id === 'both-places');
+  assert.equal(matches.length, 1, 'no duplicates');
+  assert.equal(matches[0].configFile, 'settings.json');
+});
+
+test('plugin disabled via installed_plugins.json enabledPlugins=false shows disabled', async () => {
+  mkdirSync(join(s.claudeDir, 'plugins'), { recursive: true });
+  seed(join(s.claudeDir, 'plugins', 'installed_plugins.json'), {
+    plugins: { 'off-plugin@1.0.0': [{ version: '1.0.0' }] },
+    enabledPlugins: { 'off-plugin@1.0.0': false },
+  });
+  const { data } = await s.api('GET', '/plugins');
+  assert.equal(data.find(p => p.id === 'off-plugin@1.0.0').enabled, false);
+});
+
+test('uninstall tolerates CLI "plugin not found" errors (still cleans local records)', async () => {
+  const settings = JSON.parse(readFileSync(join(s.claudeDir, 'settings.json'), 'utf8'));
+  settings.enabledPlugins = { ...(settings.enabledPlugins || {}), 'ghost-plugin': true };
+  seed(join(s.claudeDir, 'settings.json'), settings);
+  const { status, data } = await s.api('POST', '/plugins/ghost-plugin/uninstall', {});
+  assert.equal(status, 200, JSON.stringify(data));
+  const after_ = JSON.parse(readFileSync(join(s.claudeDir, 'settings.json'), 'utf8'));
+  assert.ok(!('ghost-plugin' in (after_.enabledPlugins || {})));
+});
+
+test('compose-workflow with an empty toolbox -> helpful 400', async () => {
+  // This server has plugins/MCP servers but no skills/agents/hooks/commands
+  const { status, data } = await s.api('POST', '/ai/compose-workflow', { goal: 'anything', provider: 'claude-cli' });
+  assert.equal(status, 400);
+  assert.match(data.error, /Nothing is installed/);
+});

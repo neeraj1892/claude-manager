@@ -86,6 +86,38 @@ test('creator-like local skills are detected', async () => {
   assert.ok(data.some(c => c.name === 'my-skill-generator (Local)'));
 });
 
+test('PUT on a missing skill creates it (upsert)', async () => {
+  const { status } = await s.api('PUT', '/skills/upserted-skill', { content: '---\nname: upserted-skill\n---\nBody' });
+  assert.equal(status, 200);
+  const g = await s.api('GET', '/skills/upserted-skill');
+  assert.equal(g.status, 200);
+});
+
+test('skill folder without SKILL.md is listed gracefully (no crash)', async () => {
+  mkdirSync(join(s.claudeDir, 'skills', 'empty-shell'), { recursive: true });
+  const { status, data } = await s.api('GET', '/skills');
+  assert.equal(status, 200);
+  const shell = data.find(sk => sk.name === 'empty-shell');
+  assert.ok(shell, 'listed');
+  assert.equal(shell.size, '0 B');
+});
+
+test('folded (multi-line) frontmatter descriptions are joined in the list', async () => {
+  mkdirSync(join(s.claudeDir, 'skills', 'folded-desc'), { recursive: true });
+  writeFileSync(join(s.claudeDir, 'skills', 'folded-desc', 'SKILL.md'),
+    '---\nname: folded-desc\ndescription: >\n  First folded line\n  second folded line.\ntrigger: /folded\n---\nBody');
+  const { data } = await s.api('GET', '/skills');
+  const sk = data.find(x => x.name === 'folded-desc');
+  assert.equal(sk.description, 'First folded line second folded line.');
+  assert.equal(sk.trigger, '/folded');
+});
+
+test('flat .md file with creator-like content is detected as a creator', async () => {
+  writeFileSync(join(s.claudeDir, 'skills', 'my-maker.md'), '---\nname: my-maker\n---\nA skill-creation methodology for building new skills.');
+  const { data } = await s.api('GET', '/skills/creators');
+  assert.ok(data.some(c => c.name === 'my-maker (Local)'), 'flat-file creator detected: ' + data.map(c => c.name).join(', '));
+});
+
 test('non-creator skills are NOT listed as creators', async () => {
   mkdirSync(join(s.claudeDir, 'skills', 'pdf-tools'), { recursive: true });
   writeFileSync(join(s.claudeDir, 'skills', 'pdf-tools', 'SKILL.md'),

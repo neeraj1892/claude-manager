@@ -24,6 +24,11 @@ const MCP_SOURCE = {
   ],
 };
 
+// Fixture: bare-array source with an explicit installCmd
+const ARRAY_SOURCE = [
+  { name: 'bare-entry', description: 'from a bare array source', installCmd: 'claude mcp add bare-entry -- npx -y bare-mcp' },
+];
+
 let s, fixtureServer;
 const FIXTURE_PORT = 4635;
 
@@ -32,6 +37,7 @@ before(async () => {
     res.setHeader('Content-Type', 'application/json');
     if (req.url === '/marketplace.json') return res.end(JSON.stringify(CLAUDE_MARKETPLACE));
     if (req.url === '/mcp-source.json') return res.end(JSON.stringify(MCP_SOURCE));
+    if (req.url === '/array-source.json') return res.end(JSON.stringify(ARRAY_SOURCE));
     res.statusCode = 404; res.end('{}');
   });
   await new Promise(r => fixtureServer.listen(FIXTURE_PORT, r));
@@ -175,6 +181,39 @@ test('browse search filter works', async () => {
   const { data } = await s.api('GET', `/marketplace/browse?source=${claudeSrcId}&q=pony`);
   assert.ok(data.plugins.some(p => p.name === 'pony'));
   assert.ok(!data.plugins.some(p => p.name === 'tail'));
+});
+
+test('bare-array custom sources work; explicit installCmd is preserved', async () => {
+  const r = await s.api('POST', '/marketplace/sources', { name: 'array-src', url: `http://127.0.0.1:${FIXTURE_PORT}/array-source.json` });
+  const { data } = await s.api('GET', `/marketplace/browse?source=${r.data.id}`);
+  const e = data.plugins.find(p => p.name === 'bare-entry');
+  assert.ok(e, 'entry from bare array listed');
+  assert.equal(e.installCmd, 'claude mcp add bare-entry -- npx -y bare-mcp', 'author-provided installCmd untouched');
+  await s.api('DELETE', `/marketplace/sources/${r.data.id}`);
+});
+
+test('unreachable custom source degrades to zero entries, browse still 200', async () => {
+  const r = await s.api('POST', '/marketplace/sources', { name: 'dead-src', url: 'http://127.0.0.1:59321/nope.json' });
+  const { status, data } = await s.api('GET', `/marketplace/browse?source=${r.data.id}`);
+  assert.equal(status, 200);
+  assert.deepEqual(data.plugins, []);
+  await s.api('DELETE', `/marketplace/sources/${r.data.id}`);
+});
+
+test('browse returns per-source summary counts', async () => {
+  const { data } = await s.api('GET', `/marketplace/browse?source=${mcpSrcId}`);
+  assert.ok(Array.isArray(data.sources));
+  const src = data.sources.find(x => x.id === mcpSrcId);
+  assert.ok(src);
+  assert.equal(typeof src.count, 'number');
+  assert.ok(src.count >= 1);
+});
+
+test('direct-install on an existing serverId overwrites its config', async () => {
+  await s.api('POST', '/marketplace/direct-install', { serverId: 'weather', type: 'stdio', command: 'node', args: ['new.js'] });
+  const settings = JSON.parse(readFileSync(join(s.claudeDir, 'settings.json'), 'utf8'));
+  assert.equal(settings.mcpServers.weather.command, 'node');
+  assert.deepEqual(settings.mcpServers.weather.args, ['new.js']);
 });
 
 test('toggle and delete custom source', async () => {

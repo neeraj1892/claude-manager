@@ -33,7 +33,10 @@ if [ "$1" = "-p" ]; then
     *"workflow architect"*)
       printf '{"name":"test-workflow","title":"Test Workflow","description":"d","setupGuide":["a"],"components":[{"type":"skill","name":"comp-one","description":"d"}]}'
       ;;
-    *"produce the hook"*)
+    *"FENCED_TEST"*)
+      printf -- '\`\`\`markdown\\n---\\nname: fenced-skill\\ndescription: was wrapped in a code fence\\n---\\n\\n# Fenced\\n\`\`\`'
+      ;;
+    *"hook author"*)
       printf '#!/usr/bin/env node\\nimport readline from "readline";\\n// canned hook\\n'
       ;;
     *)
@@ -45,6 +48,7 @@ fi
 echo "claude $*" >> "$LOG"
 case "$*" in
   *" dupe "*|*" dupe") echo "MCP server dupe already exists in local config" >&2; exit 1;;
+  *"plugin uninstall ghost-plugin"*) echo "Error: Plugin not found: ghost-plugin" >&2; exit 1;;
 esac
 echo "ok: claude $*"
 exit 0
