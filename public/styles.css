@@ -1627,3 +1627,22 @@ body.light {
 .ref-chip { cursor: pointer; user-select: none; }
 .ref-chip.active { background: var(--accent); color: #fff; border-color: var(--accent); }
 .ref-chip.active:hover { background: var(--accent-hover); color: #fff; }
+
+/* Tab explainer panels — what / why / example for every settings tab */
+.tab-explainer {
+  background: var(--grad-soft, var(--accent-dim));
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--border));
+  border-radius: var(--radius);
+  padding: 12px 16px;
+  margin: 14px 0 4px;
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+.tab-explainer-what { margin-bottom: 4px; }
+.tab-explainer-why  { color: var(--text-muted); margin-bottom: 4px; }
+.tab-explainer-ex   { color: var(--text-muted); }
+.tab-explainer code {
+  background: color-mix(in srgb, var(--text) 8%, transparent);
+  padding: 1px 5px; border-radius: 4px;
+  font-size: 11px;
+}

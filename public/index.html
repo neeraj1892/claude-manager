@@ -115,7 +115,10 @@
           <div class="section-title">Settings</div>
           <div class="section-subtitle">settings.json configuration</div>
         </div>
-        <button class="btn btn-primary" id="saveSettings">Save</button>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-secondary" id="settingsAiBtn">✨ Add with AI</button>
+          <button class="btn btn-primary" id="saveSettings">Save</button>
+        </div>
       </div>
       <div class="tabs" id="settings-tabs">
         <button class="tab active" data-tab="files-keys">📋 Files &amp; Keys</button>
@@ -132,7 +135,11 @@
         </div>
         <div id="settings-inspector"></div>
       </div>
-      <div id="settings-tab-general" class="tab-content">
+      <div id="settings-tab-general" class="tab-content"><div class="tab-explainer">
+          <div class="tab-explainer-what">Sets the <strong>default model</strong> Claude Code starts every session with.</div>
+          <div class="tab-explainer-why">💡 <strong>Why use it:</strong> Pick a cheaper/faster model (haiku) for routine work, or a stronger one (opus) for hard problems — without typing <code>/model</code> each time.</div>
+          <div class="tab-explainer-ex"><strong>Example:</strong> Set it to <code>opus</code> and every new <code>claude</code> session starts on Opus.</div>
+        </div>
         <div class="card" style="margin-top:16px">
           <div style="display:flex;flex-direction:column;gap:20px">
             <div class="form-group">
@@ -150,10 +157,18 @@
           </div>
         </div>
       </div>
-      <div id="settings-tab-hooks-settings" class="tab-content" style="margin-top:16px">
+      <div id="settings-tab-hooks-settings" class="tab-content" style="margin-top:16px"><div class="tab-explainer">
+          <div class="tab-explainer-what">Shows the <strong>hook wiring</strong> from settings.json — which scripts run automatically at lifecycle events (PreToolUse, PostToolUse, Stop, SessionStart).</div>
+          <div class="tab-explainer-why">💡 <strong>Why use it:</strong> Automate guardrails and routines: block dangerous commands before they run, auto-run tests after edits, inject git context at session start.</div>
+          <div class="tab-explainer-ex"><strong>Example:</strong> A <code>PreToolUse</code> hook matching <code>Bash</code> that blocks any <code>rm -rf</code> outside /tmp. Manage the actual scripts in the <strong>Hooks</strong> section.</div>
+        </div>
         <div id="hooks-settings-ui"></div>
       </div>
-      <div id="settings-tab-permissions" class="tab-content" style="margin-top:16px">
+      <div id="settings-tab-permissions" class="tab-content" style="margin-top:16px"><div class="tab-explainer">
+          <div class="tab-explainer-what">Controls <strong>what Claude may do without asking</strong>. Allow rules skip the permission prompt; deny rules block the action outright (deny always beats allow).</div>
+          <div class="tab-explainer-why">💡 <strong>Why use it:</strong> More autonomy where it’s safe, hard limits where it isn’t — stop being asked to approve <code>git status</code> for the hundredth time, while making <code>.env</code> untouchable.</div>
+          <div class="tab-explainer-ex"><strong>Example:</strong> <code>Bash(git *)</code> in <em>allow</em> lets every git command run unprompted. <code>Read(.env)</code> + <code>Read(**/secrets/**)</code> in <em>deny</em> means Claude can never read your secrets, even if asked. Rule syntax: <code>Tool(specifier)</code> — e.g. <code>Bash(npm run test:*)</code>, <code>WebFetch(domain:github.com)</code>, <code>Edit(~/.ssh/**)</code>.</div>
+        </div>
         <div class="card">
           <div style="display:flex;flex-direction:column;gap:20px">
             <div class="form-group">
@@ -175,16 +190,28 @@
           </div>
         </div>
       </div>
-      <div id="settings-tab-env-vars" class="tab-content" style="margin-top:16px">
+      <div id="settings-tab-env-vars" class="tab-content" style="margin-top:16px"><div class="tab-explainer">
+          <div class="tab-explainer-what">Environment variables <strong>injected into every Claude Code session</strong> and the commands it runs.</div>
+          <div class="tab-explainer-why">💡 <strong>Why use it:</strong> Set once here instead of exporting in every shell: proxies, API endpoints, tokens for MCP servers, feature flags.</div>
+          <div class="tab-explainer-ex"><strong>Example:</strong> <code>HTTPS_PROXY=http://proxy.corp:8080</code> routes Claude’s traffic through your corporate proxy; <code>ANTHROPIC_BASE_URL</code> points at a gateway.</div>
+        </div>
         <div class="card">
           <div id="env-var-rows"></div>
           <button class="btn btn-secondary btn-sm mt-2" id="add-env-var">+ Add Variable</button>
         </div>
       </div>
-      <div id="settings-tab-raw-json" class="tab-content" style="margin-top:16px;height:500px">
+      <div id="settings-tab-raw-json" class="tab-content" style="margin-top:16px;height:500px;display:flex;flex-direction:column"><div class="tab-explainer">
+          <div class="tab-explainer-what">The <strong>entire settings.json</strong>, unfiltered — for keys the other tabs don’t cover.</div>
+          <div class="tab-explainer-why">💡 <strong>Why use it:</strong> Advanced keys like <code>statusLine</code>, <code>cleanupPeriodDays</code>, <code>includeCoAuthoredBy</code>, <code>apiKeyHelper</code> live here. See <strong>Files &amp; Keys</strong> for what each one does.</div>
+          <div class="tab-explainer-ex"><strong>Example:</strong> Add <code>"cleanupPeriodDays": 7</code> to keep chat transcripts for a week instead of the default.</div>
+        </div>
         <div id="settings-raw-editor" style="height:100%;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden"></div>
       </div>
-      <div id="settings-tab-ai" class="tab-content" style="margin-top:16px">
+      <div id="settings-tab-ai" class="tab-content" style="margin-top:16px"><div class="tab-explainer">
+          <div class="tab-explainer-what">Configures the <strong>AI providers this app uses</strong> for Generate / Improve / Explain / Run / Compose — not Claude Code itself.</div>
+          <div class="tab-explainer-why">💡 <strong>Why use it:</strong> No Claude CLI on this machine? Add an OpenRouter key and every AI feature here still works (text-only for runs).</div>
+          <div class="tab-explainer-ex"><strong>Example:</strong> Paste an OpenRouter key, pick Claude Sonnet 4.5, and “Generate with AI” works even without Claude Code installed.</div>
+        </div>
         <div class="card">
           <div style="display:flex;flex-direction:column;gap:20px">
             <div>
@@ -679,6 +706,57 @@
     <div class="template-gallery-footer">
       <button class="btn btn-ghost" id="templateModalCancel">Cancel</button>
       <button class="btn btn-primary" id="templateModalOpen">Open Editor →</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== SETTINGS "ADD WITH AI" MODAL ===== -->
+<div class="overlay" id="settingsAiModal">
+  <div class="skill-gen-dialog" style="max-width:640px">
+    <div class="skill-gen-header">
+      <div>
+        <h3 style="margin:0 0 2px">✨ Change Settings with AI</h3>
+        <p style="margin:0;font-size:12px;color:var(--text-muted)">Describe the change in plain language — review the exact patch before anything is written</p>
+      </div>
+      <button class="icon-btn" id="settingsAiClose">✕</button>
+    </div>
+
+    <div id="settingsAiSetup">
+      <div class="form-group">
+        <label class="form-label">What should change?</label>
+        <textarea id="settingsAiRequest" rows="3" placeholder="e.g. never let Claude read .env files, and allow all git commands without asking"></textarea>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">
+          <span class="matcher-chip" data-sareq="Never let Claude read or edit .env files or anything under secrets/">Protect secrets</span>
+          <span class="matcher-chip" data-sareq="Allow all git and npm commands to run without asking for permission">Trust git & npm</span>
+          <span class="matcher-chip" data-sareq="Use opus as the default model">Default to Opus</span>
+          <span class="matcher-chip" data-sareq="Keep chat transcripts for only 7 days">7-day transcripts</span>
+          <span class="matcher-chip" data-sareq="Stop adding Co-Authored-By: Claude to my git commits">No co-author line</span>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Suggest with</label>
+        <div style="display:flex;gap:6px;margin-top:4px">
+          <button class="gen-type-tab active" id="saProvCli" type="button">⚡ Claude CLI</button>
+          <button class="gen-type-tab" id="saProvOr" type="button">🌐 OpenRouter</button>
+        </div>
+      </div>
+      <div class="folder-dialog-actions">
+        <button class="btn btn-ghost" id="settingsAiCancel">Cancel</button>
+        <button class="btn btn-primary" id="settingsAiSuggest">Suggest Change</button>
+      </div>
+    </div>
+
+    <div id="settingsAiReview" style="display:none">
+      <div id="settingsAiExplanation" style="background:var(--accent-dim);border:1px solid color-mix(in srgb, var(--accent) 35%, transparent);border-radius:var(--radius-sm);padding:10px 12px;font-size:13px;margin-bottom:12px"></div>
+      <div class="form-group">
+        <label class="form-label">Patch to apply <span style="font-weight:400;color:var(--text-dim)">(merge into settings.json — edit if needed; <code>null</code> deletes a key)</span></label>
+        <textarea id="settingsAiPatch" rows="9" style="font-family:monospace;font-size:12px"></textarea>
+      </div>
+      <div style="font-size:11px;color:var(--text-dim);margin-bottom:12px">Objects merge deeply, arrays replace wholesale. Nothing is written until you click Apply.</div>
+      <div class="folder-dialog-actions">
+        <button class="btn btn-ghost" id="settingsAiBack">← Rephrase</button>
+        <button class="btn btn-primary" id="settingsAiApply">✓ Apply to settings.json</button>
+      </div>
     </div>
   </div>
 </div>

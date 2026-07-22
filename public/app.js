@@ -825,6 +825,74 @@ async function loadSettingsInspector() {
   }
 }
 
+// ===== SETTINGS "ADD WITH AI" =====
+let _saProvider = 'claude-cli';
+
+function setSaProvider(p) {
+  _saProvider = p;
+  document.getElementById('saProvCli').classList.toggle('active', p === 'claude-cli');
+  document.getElementById('saProvOr').classList.toggle('active', p === 'openrouter');
+}
+document.getElementById('saProvCli').onclick = () => setSaProvider('claude-cli');
+document.getElementById('saProvOr').onclick  = () => setSaProvider('openrouter');
+
+document.getElementById('settingsAiBtn').onclick = async () => {
+  document.getElementById('settingsAiRequest').value = '';
+  document.getElementById('settingsAiSetup').style.display = '';
+  document.getElementById('settingsAiReview').style.display = 'none';
+  document.getElementById('settingsAiModal').classList.add('open');
+  try {
+    const cfg = await api('GET', '/ai-config');
+    setSaProvider(cfg.claudeCli ? 'claude-cli' : 'openrouter');
+  } catch { setSaProvider('claude-cli'); }
+  setTimeout(() => document.getElementById('settingsAiRequest').focus(), 60);
+};
+document.getElementById('settingsAiClose').onclick  = () => document.getElementById('settingsAiModal').classList.remove('open');
+document.getElementById('settingsAiCancel').onclick = () => document.getElementById('settingsAiModal').classList.remove('open');
+document.getElementById('settingsAiBack').onclick   = () => {
+  document.getElementById('settingsAiSetup').style.display = '';
+  document.getElementById('settingsAiReview').style.display = 'none';
+};
+document.querySelectorAll('#settingsAiModal [data-sareq]').forEach(chip => {
+  chip.onclick = () => { document.getElementById('settingsAiRequest').value = chip.dataset.sareq; };
+});
+
+document.getElementById('settingsAiSuggest').onclick = async () => {
+  const request = document.getElementById('settingsAiRequest').value.trim();
+  if (!request) { toast('Describe the settings change first', 'error'); return; }
+  const btn = document.getElementById('settingsAiSuggest');
+  btn.disabled = true; btn.textContent = 'Thinking…';
+  try {
+    const r = await api('POST', '/ai/suggest-settings', { request, provider: _saProvider });
+    document.getElementById('settingsAiExplanation').textContent = r.explanation || 'Proposed change:';
+    document.getElementById('settingsAiPatch').value = JSON.stringify(r.patch, null, 2);
+    document.getElementById('settingsAiSetup').style.display = 'none';
+    document.getElementById('settingsAiReview').style.display = '';
+  } catch (e) {
+    toast('Suggestion failed: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false; btn.textContent = 'Suggest Change';
+  }
+};
+
+document.getElementById('settingsAiApply').onclick = async () => {
+  let patch;
+  try { patch = JSON.parse(document.getElementById('settingsAiPatch').value); }
+  catch { toast('The patch is not valid JSON — fix it before applying', 'error'); return; }
+  const btn = document.getElementById('settingsAiApply');
+  btn.disabled = true; btn.textContent = 'Applying…';
+  try {
+    await api('POST', '/settings/apply-patch', { patch });
+    document.getElementById('settingsAiModal').classList.remove('open');
+    toast('settings.json updated');
+    loadSettings(); // refresh all tabs + inspector
+  } catch (e) {
+    toast('Apply failed: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false; btn.textContent = '✓ Apply to settings.json';
+  }
+};
+
 async function loadSettings() {
   loadSettingsInspector();
   settingsData = await api('GET', '/settings');

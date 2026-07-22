@@ -27,6 +27,9 @@ if [ "$1" = "-p" ]; then
       ;;
   esac
   case "$PROMPT" in
+    *"settings expert"*)
+      printf '{"explanation":"Denies Claude access to env files.","patch":{"permissions":{"deny":["Read(.env)","Read(.env.*)"]},"model":"opus"}}'
+      ;;
     *"INVENTORY OF INSTALLED RESOURCES"*)
       printf '{"feasible":"yes","summary":"Canned compose analysis.","components":[{"type":"skill","name":"compose-skill","role":"does the work"},{"type":"skill","name":"ghost-skill","role":"does not exist"}],"missing":[{"type":"hook","name":"guard-hook","description":"blocks bad commands"}],"setupGuide":["wire guard-hook to PreToolUse"]}'
       ;;

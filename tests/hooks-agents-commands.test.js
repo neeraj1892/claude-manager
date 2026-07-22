@@ -159,6 +159,35 @@ test('settings/inspect: unparseable file surfaces its error instead of hiding it
   writeFileSync(join(s.claudeDir, 'settings.local.json'), '{}'); // restore
 });
 
+test('suggest-settings: AI patch is merged against current settings for preview', async () => {
+  await s.api('PUT', '/settings', { settings: { env: { KEEP_ME: '1' } } });
+  const { status, data } = await s.api('POST', '/ai/suggest-settings', { request: 'protect my env files', provider: 'claude-cli' });
+  assert.equal(status, 200, JSON.stringify(data));
+  assert.match(data.explanation, /env files/i);
+  assert.deepEqual(data.patch.permissions.deny, ['Read(.env)', 'Read(.env.*)']);
+  assert.equal(data.merged.model, 'opus', 'patch applied in preview');
+  assert.equal(data.merged.env.KEEP_ME, '1', 'existing keys preserved in preview');
+  assert.equal((await s.api('POST', '/ai/suggest-settings', {})).status, 400, 'request required');
+  // Nothing written yet — suggest is read-only
+  const current = await s.api('GET', '/settings');
+  assert.equal(current.data.model, undefined, 'settings untouched until apply');
+});
+
+test('apply-patch: deep-merges, null deletes, validates input', async () => {
+  await s.api('PUT', '/settings', { settings: { model: 'sonnet', env: { A: '1', B: '2' }, permissions: { allow: ['Bash(ls *)'] } } });
+  const r = await s.api('POST', '/settings/apply-patch', {
+    patch: { model: 'opus', env: { B: null, C: '3' }, permissions: { deny: ['Read(.env)'] } },
+  });
+  assert.equal(r.status, 200);
+  const { data } = await s.api('GET', '/settings');
+  assert.equal(data.model, 'opus', 'scalar replaced');
+  assert.deepEqual(data.env, { A: '1', C: '3' }, 'deep merge with null-deletion');
+  assert.deepEqual(data.permissions.allow, ['Bash(ls *)'], 'sibling keys preserved');
+  assert.deepEqual(data.permissions.deny, ['Read(.env)'], 'new nested key added');
+  assert.equal((await s.api('POST', '/settings/apply-patch', {})).status, 400);
+  assert.equal((await s.api('POST', '/settings/apply-patch', { patch: [1, 2] })).status, 400, 'array patch rejected');
+});
+
 test('settings: get/put roundtrip; invalid body -> 400', async () => {
   assert.equal((await s.api('PUT', '/settings', { settings: { model: 'opus' } })).status, 200);
   const { data } = await s.api('GET', '/settings');

@@ -786,6 +786,93 @@ app.get('/api/settings', (req, res) => {
   res.json(readJson(join(claudeDir, 'settings.json')));
 });
 
+// --- Settings "Add with AI": natural language -> reviewed merge patch ---
+
+// RFC 7386-style merge: objects merge deep, null deletes, everything else replaces.
+function mergePatch(target, patch) {
+  if (patch === null || typeof patch !== 'object' || Array.isArray(patch)) return patch;
+  const out = (target && typeof target === 'object' && !Array.isArray(target)) ? { ...target } : {};
+  for (const [k, v] of Object.entries(patch)) {
+    if (v === null) delete out[k];
+    else out[k] = mergePatch(out[k], v);
+  }
+  return out;
+}
+
+const SUGGEST_SETTINGS_PROMPT = `You are a Claude Code settings expert. The user requests a configuration change.
+You are given their CURRENT settings.json. Produce a minimal JSON merge patch.
+
+Output ONLY raw JSON — no prose, no markdown fences:
+{
+  "explanation": "1-2 sentences: what this change does and why it satisfies the request.",
+  "patch": { ...only the keys that change... }
+}
+
+Merge-patch semantics: objects merge deeply, a null value DELETES that key, arrays replace wholesale (so include the full new array, keeping existing entries the user still wants).
+
+Valid settings.json keys:
+- model: default model ("opus", "sonnet", "haiku", or a full model string)
+- permissions: { "allow": [rules], "deny": [rules], "ask": [rules] }
+  Rule syntax: Tool or Tool(specifier). Examples: "Bash(git *)", "Bash(npm run test:*)",
+  "Read(~/.ssh/**)", "Edit(.env)", "WebFetch(domain:github.com)", "mcp__github".
+  deny beats allow. Deny secrets access with rules like "Read(.env)", "Read(.env.*)", "Read(**/secrets/**)".
+- env: { "KEY": "value" } — environment variables injected into every session
+- hooks: lifecycle hook wiring (PreToolUse/PostToolUse/Stop/SessionStart -> matcher -> commands)
+- includeCoAuthoredBy: boolean — "Co-Authored-By: Claude" on git commits
+- cleanupPeriodDays: number — transcript retention
+- statusLine: { "type": "command", "command": "..." }
+- outputStyle: string
+- alwaysThinkingEnabled: boolean
+Never invent keys that are not real Claude Code settings.
+
+CURRENT settings.json:
+`;
+
+app.post('/api/ai/suggest-settings', async (req, res) => {
+  const { request, provider } = req.body;
+  if (!request?.trim()) return res.status(400).json({ error: 'request is required' });
+  const current = readJson(join(claudeDir, 'settings.json'));
+  const fullPrompt = SUGGEST_SETTINGS_PROMPT + JSON.stringify(current, null, 2)
+    + '\n\nUser request: ' + request.trim();
+  try {
+    let raw;
+    if (provider === 'openrouter') {
+      const cfg = loadConfig();
+      if (!cfg.openRouterKey) return res.status(400).json({ error: 'OpenRouter API key not configured. Add it in the AI Generation tab.' });
+      raw = await callOpenRouter(cfg.openRouterKey, cfg.openRouterModel || 'anthropic/claude-sonnet-4-5', '', fullPrompt);
+    } else {
+      if (!claudeCliAvailable) return res.status(400).json({ error: 'Claude CLI not found. Use OpenRouter instead.' });
+      raw = await callClaudeCli(fullPrompt);
+    }
+    const json = raw.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim();
+    const suggestion = JSON.parse(json);
+    if (!suggestion.patch || typeof suggestion.patch !== 'object' || Array.isArray(suggestion.patch)) {
+      return res.status(500).json({ error: 'AI returned an invalid patch — try rephrasing the request.' });
+    }
+    res.json({
+      explanation: suggestion.explanation || '',
+      patch: suggestion.patch,
+      merged: mergePatch(current, suggestion.patch),
+    });
+  } catch (e) {
+    if (e instanceof SyntaxError) return res.status(500).json({ error: 'AI returned invalid JSON. Try again.' });
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Deterministic apply: merge the (possibly user-edited) patch into the LATEST
+// settings.json on disk, so nothing is lost if it changed since the suggestion.
+app.post('/api/settings/apply-patch', (req, res) => {
+  const { patch } = req.body;
+  if (!patch || typeof patch !== 'object' || Array.isArray(patch)) {
+    return res.status(400).json({ error: 'patch object is required' });
+  }
+  const settingsPath = join(claudeDir, 'settings.json');
+  const merged = mergePatch(readJson(settingsPath), patch);
+  writeJson(settingsPath, merged);
+  res.json({ ok: true, settings: merged });
+});
+
 app.put('/api/settings', (req, res) => {
   const { settings } = req.body;
   if (!settings || typeof settings !== 'object') return res.status(400).json({ error: 'settings object required' });
