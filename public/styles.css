@@ -1622,3 +1622,8 @@ body.light {
 .btn-primary:hover { background: var(--accent-hover); box-shadow: none; transform: none; }
 .btn-primary:active { transform: scale(0.97); opacity: 0.9; }
 .logo-icon { background: var(--accent); box-shadow: none; }
+
+/* Selectable reference chips (MCPs/plugins in workflow flows) */
+.ref-chip { cursor: pointer; user-select: none; }
+.ref-chip.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+.ref-chip.active:hover { background: var(--accent-hover); color: #fff; }

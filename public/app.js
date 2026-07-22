@@ -2004,9 +2004,13 @@ document.getElementById('explainModalCopy').onclick   = () => {
 let _wfState = { goal: '', context: '', plan: null, components: [], provider: 'claude-cli', builtComponents: [] };
 const WF_INSTALL_API = { skill: 'skills', agent: 'agents', hook: 'hooks/files', command: 'commands' };
 
+const _wfRefs = new Set();
+
 function openWorkflowWizard() {
   _wfState = { goal: '', context: '', plan: null, components: [], provider: 'claude-cli', builtComponents: [] };
   document.getElementById('wfGoalInput').value = '';
+  const wfRefUrl = document.getElementById('wfRefUrl'); if (wfRefUrl) wfRefUrl.value = '';
+  loadRefChips('wfRefChips', _wfRefs);
   document.getElementById('wfRepoPath').value    = '';
   document.getElementById('wfTechStack').value   = '';
   document.getElementById('wfTrigger').value     = '';
@@ -2082,7 +2086,13 @@ document.getElementById('wfGenerateBtn').onclick = async () => {
     _wfState.goal    = goal;
     _wfState.context = ctxParts.join('\n');
     const apiProvider = _wfState.provider === 'claude-cli' ? 'claude' : 'openrouter';
-    _wfState.plan = await api('POST', '/ai/generate-workflow-plan', { goal, context: _wfState.context, provider: apiProvider });
+    _wfState.plan = await api('POST', '/ai/generate-workflow-plan', {
+      goal,
+      context: _wfState.context,
+      provider: apiProvider,
+      mcpRefs: [..._wfRefs],
+      referenceUrl: document.getElementById('wfRefUrl')?.value.trim() || undefined,
+    });
     _wfState.components = _wfState.plan.components.map(c => ({ ...c, removed: false }));
     renderWfPlan();
   } catch (e) {
@@ -3956,8 +3966,36 @@ document.getElementById('runModalStop').onclick = async () => {
   try { await api('POST', '/run/' + _runModal.runId + '/stop', {}); toast('Run stopped'); } catch (e) { toast(e.message, 'error'); }
 };
 
+// ===== SHARED: selectable MCP/plugin reference chips =====
+// Renders every installed MCP server / plugin as a toggleable chip; selected
+// names go to the AI as capabilities to leverage.
+async function loadRefChips(containerId, selectedSet) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  selectedSet.clear();
+  el.innerHTML = '<span style="font-size:11px;color:var(--text-dim)">Loading installed MCPs & plugins…</span>';
+  try {
+    const plugins = await api('GET', '/plugins');
+    if (!plugins.length) {
+      el.innerHTML = '<span style="font-size:11px;color:var(--text-dim)">No MCP servers or plugins installed — add some in the Plugins tab.</span>';
+      return;
+    }
+    el.innerHTML = plugins.map(p =>
+      `<span class="matcher-chip ref-chip" data-ref="${escHtml(p.id)}" title="${escHtml(p.description || '')}">${p.isMcpServer ? '🔌' : '🧱'} ${escHtml(p.id.split('@')[0])}</span>`
+    ).join('');
+    el.querySelectorAll('[data-ref]').forEach(chip => {
+      chip.onclick = () => {
+        const id = chip.dataset.ref;
+        if (selectedSet.has(id)) { selectedSet.delete(id); chip.classList.remove('active'); }
+        else { selectedSet.add(id); chip.classList.add('active'); }
+      };
+    });
+  } catch { el.innerHTML = ''; }
+}
+
 // ===== COMPOSE WORKFLOW FROM INSTALLED RESOURCES =====
 let _composeProvider = 'claude-cli';
+const _composeRefs = new Set();
 
 async function setComposeProvider(p) {
   _composeProvider = p;
@@ -3993,6 +4031,8 @@ function composeShow(state) {
 
 async function openComposeModal() {
   composeShow('setup');
+  document.getElementById('composeRefUrl').value = '';
+  loadRefChips('composeRefChips', _composeRefs);
   document.getElementById('composeModal').classList.add('open');
   // Auto-select the best available provider (no CLI → OpenRouter with config open)
   try {
@@ -4030,7 +4070,12 @@ document.getElementById('composeAnalyze').onclick = async () => {
       const model = document.getElementById('composeOrModel').value;
       await api('PUT', '/ai-config', inlineKey ? { openRouterKey: inlineKey, openRouterModel: model } : { openRouterModel: model });
     }
-    const plan = await api('POST', '/ai/compose-workflow', { goal, provider: _composeProvider });
+    const plan = await api('POST', '/ai/compose-workflow', {
+      goal,
+      provider: _composeProvider,
+      mcpRefs: [..._composeRefs],
+      referenceUrl: document.getElementById('composeRefUrl').value.trim() || undefined,
+    });
     const verdict = document.getElementById('composeVerdict');
     const v = plan.feasible;
     verdict.innerHTML = v === 'yes'

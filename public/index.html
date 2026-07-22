@@ -785,6 +785,14 @@
           </div>
         </div>
       </div>
+      <div class="form-group">
+        <label class="form-label">Use these MCP servers / plugins <span style="font-weight:400;color:var(--text-dim)">(optional — click to select)</span></label>
+        <div id="composeRefChips" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px"></div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Reference link <span style="font-weight:400;color:var(--text-dim)">(optional — an example to take inspiration from; its content is fetched and shown to the AI)</span></label>
+        <input type="url" id="composeRefUrl" placeholder="https://github.com/…/example-workflow.md">
+      </div>
       <div id="composeInventoryNote" style="font-size:11px;color:var(--text-dim);margin-bottom:14px"></div>
       <div class="folder-dialog-actions">
         <button class="btn btn-ghost" id="composeCancel">Cancel</button>
@@ -1239,6 +1247,15 @@
       <div class="form-group" style="margin-bottom:10px">
         <label class="form-label">What should this workflow do?</label>
         <textarea id="wfGoalInput" rows="3" placeholder="e.g. A code review pipeline that checks quality, security, and posts a structured report" style="resize:vertical"></textarea>
+
+        <div class="form-group" style="margin-top:12px">
+          <label class="form-label">Use these MCP servers / plugins <span style="font-weight:400;color:var(--text-dim)">(optional — click to select)</span></label>
+          <div id="wfRefChips" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px"></div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Reference link <span style="font-weight:400;color:var(--text-dim)">(optional — an example the AI should take inspiration from)</span></label>
+          <input type="url" id="wfRefUrl" placeholder="https://github.com/…/example-workflow.md">
+        </div>
       </div>
       <div class="wf-goal-examples" style="margin-bottom:14px">
         <span style="font-size:11px;color:var(--text-dim);margin-right:6px">Try:</span>

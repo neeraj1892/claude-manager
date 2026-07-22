@@ -1539,7 +1539,10 @@ app.post('/api/ai/generate-workflow-plan', async (req, res) => {
   const { goal, context, provider } = req.body;
   if (!goal?.trim()) return res.status(400).json({ error: 'goal is required' });
   const contextBlock = context?.trim() ? `\nAdditional context:\n${context.trim()}\n` : '';
-  const fullPrompt = WORKFLOW_PLAN_PROMPT + contextBlock + '\nGoal: ' + goal.trim();
+  let extras = '';
+  try { extras = await buildAiContextBlocks(req.body); }
+  catch (e) { return res.status(e.status || 500).json({ error: e.message }); }
+  const fullPrompt = WORKFLOW_PLAN_PROMPT + contextBlock + extras + '\nGoal: ' + goal.trim();
   try {
     let raw;
     if (provider === 'openrouter') {
@@ -1596,6 +1599,46 @@ function collectInventory() {
   return inv;
 }
 
+// Installed MCP servers + plugins (name/kind/description) — offered to the AI
+// as capabilities it can leverage when designing workflows.
+function collectMcpAndPlugins() {
+  const settings = readJson(join(claudeDir, 'settings.json'));
+  const descs = getPluginDescriptions();
+  const out = [];
+  Object.entries(settings.mcpServers || {}).forEach(([id, cfg]) =>
+    out.push({ name: id, kind: 'mcp', description: describeMcpServer(id, cfg) }));
+  collectGlobalMcpServers().forEach(({ id, cfg }) => {
+    if (!out.some(x => x.name === id)) out.push({ name: id, kind: 'mcp', description: describeMcpServer(id, cfg) });
+  });
+  const pluginData = readJson(join(claudeDir, 'plugins', 'installed_plugins.json'), {});
+  new Set([...Object.keys(settings.enabledPlugins || {}), ...Object.keys(pluginData.plugins || {})]).forEach(id => {
+    out.push({ name: id, kind: 'plugin', description: descs[id.toLowerCase()] || descs[id.split('@')[0].toLowerCase()] || 'Claude Code plugin' });
+  });
+  return out;
+}
+
+// Optional AI context: user-selected MCP/plugin references and a fetched
+// reference link. Throws { status: 400 } errors for invalid/unreachable URLs.
+async function buildAiContextBlocks({ mcpRefs, referenceUrl } = {}) {
+  const blocks = [];
+  if (Array.isArray(mcpRefs) && mcpRefs.length) {
+    const all = collectMcpAndPlugins();
+    const chosen = mcpRefs.map(name => all.find(x => x.name === name) || { name, kind: 'mcp', description: '' });
+    blocks.push('AVAILABLE MCP SERVERS / PLUGINS (the user selected these — leverage their capabilities in the design and mention them in components/roles and setup steps where relevant):\n'
+      + chosen.map(x => `- ${x.name} (${x.kind})${x.description ? ': ' + x.description : ''}`).join('\n'));
+  }
+  if (referenceUrl?.trim()) {
+    let u;
+    try { u = new URL(referenceUrl.trim()); } catch { throw Object.assign(new Error('Invalid reference URL'), { status: 400 }); }
+    if (!/^https?:$/.test(u.protocol)) throw Object.assign(new Error('Reference URL must be http(s)'), { status: 400 });
+    const text = await fetchTextUrl(u.href);
+    if (!text) throw Object.assign(new Error('Could not fetch the reference URL (' + u.href + '). Check the link and try again.'), { status: 400 });
+    blocks.push(`REFERENCE EXAMPLE (fetched from ${u.href} — the user wants the workflow to take inspiration from this; mirror its structure, conventions, or format where sensible):\n`
+      + text.slice(0, 8000));
+  }
+  return blocks.length ? '\n\n' + blocks.join('\n\n') : '';
+}
+
 const COMPOSE_PROMPT = `You are a Claude Code workflow architect. The user wants a workflow.
 Decide whether it can be composed from the ALREADY-INSTALLED resources in the inventory below.
 Prefer reusing existing resources; only propose new ones when nothing installed fits.
@@ -1622,8 +1665,12 @@ app.post('/api/ai/compose-workflow', async (req, res) => {
   const total = inventory.skills.length + inventory.agents.length + inventory.hooks.length + inventory.commands.length;
   if (!total) return res.status(400).json({ error: 'Nothing is installed yet — add some skills, agents, hooks, or commands first, or use "Create with AI" to generate a full workflow from scratch.' });
 
+  let extras = '';
+  try { extras = await buildAiContextBlocks(req.body); }
+  catch (e) { return res.status(e.status || 500).json({ error: e.message }); }
   const fullPrompt = COMPOSE_PROMPT
     + '\nINVENTORY OF INSTALLED RESOURCES:\n' + JSON.stringify(inventory, null, 1)
+    + extras
     + '\n\nDesired workflow: ' + goal.trim();
   try {
     let raw;
@@ -1733,7 +1780,13 @@ Rules:
 app.post('/api/ai/generate-workflow', async (req, res) => {
   const { goal, provider } = req.body;
   if (!goal?.trim()) return res.status(400).json({ error: 'goal is required' });
-  const fullPrompt = WORKFLOW_SYSTEM_PROMPT + goal.trim();
+  let extras = '';
+  try { extras = await buildAiContextBlocks(req.body); }
+  catch (e) { return res.status(e.status || 500).json({ error: e.message }); }
+  // WORKFLOW_SYSTEM_PROMPT ends with "Goal: " — inject extras before that line
+  const fullPrompt = extras
+    ? WORKFLOW_SYSTEM_PROMPT.replace(/Goal: $/, '') + extras + '\n\nGoal: ' + goal.trim()
+    : WORKFLOW_SYSTEM_PROMPT + goal.trim();
   try {
     let raw;
     if (provider === 'openrouter') {

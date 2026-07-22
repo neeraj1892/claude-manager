@@ -1,6 +1,6 @@
 # Claude Manager — Test Suite & Bug Fixes
 
-143 tests. Run with `npm test` (Node ≥18). Each test file boots an isolated server instance with its own temp `claudeDir`, temp `HOME` (isolated `~/.claude.json`), isolated config file, and a fake `claude` CLI shim on PATH that records every invocation — so no network access or real Claude Code install is needed.
+147 tests. Run with `npm test` (Node ≥18). Each test file boots an isolated server instance with its own temp `claudeDir`, temp `HOME` (isolated `~/.claude.json`), isolated config file, and a fake `claude` CLI shim on PATH that records every invocation — so no network access or real Claude Code install is needed.
 
 ## Bugs found and fixed
 
@@ -17,7 +17,7 @@
 11. **Frontmatter parser dropped hyphenated keys** (`argument-hint` etc.) — key regex widened.
 12. **Install modal warned "claude may not be installed"** for `claude plugin …` commands — now recognizes all runnable claude commands (app.js).
 
-## Test files (80 tests)
+## Test files
 
 | File | Covers |
 |---|---|

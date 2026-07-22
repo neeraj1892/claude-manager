@@ -11,6 +11,10 @@ before(async () => {
   // Fixture OpenRouter endpoint: returns prose for PROSE_TEST prompts,
   // valid SKILL.md frontmatter otherwise.
   orServer = http.createServer((req, res) => {
+    if (req.method === 'GET' && req.url === '/example.md') {
+      res.setHeader('Content-Type', 'text/plain');
+      return res.end('EXAMPLE_REFERENCE_CONTENT: a great workflow does X then Y.');
+    }
     let body = '';
     req.on('data', c => body += c);
     req.on('end', () => {
@@ -152,6 +156,64 @@ test('compose-workflow: analyzes feasibility against installed inventory', async
 
 test('compose-workflow: validation (goal required, openrouter needs key)', async () => {
   assert.equal((await s.api('POST', '/ai/compose-workflow', {})).status, 400);
+});
+
+// ── MCP/plugin references + reference link in workflow flows ──
+
+test('compose-workflow: selected MCPs/plugins and reference link reach the AI prompt', async () => {
+  const { writeFileSync, mkdirSync } = require('fs');
+  const { join } = require('path');
+  // Install an MCP server + a plugin record so refs resolve with descriptions
+  writeFileSync(join(s.claudeDir, 'settings.json'), JSON.stringify({
+    mcpServers: { 'github-mcp': { type: 'stdio', command: 'npx', args: ['-y', 'gh-mcp'] } },
+    enabledPlugins: { 'pony@ponytail': true },
+  }));
+  const { status, data } = await s.api('POST', '/ai/compose-workflow', {
+    goal: 'sync issues to reviews',
+    provider: 'claude-cli',
+    mcpRefs: ['github-mcp', 'pony@ponytail'],
+    referenceUrl: `http://127.0.0.1:${OR_PORT}/example.md`,
+  });
+  assert.equal(status, 200, JSON.stringify(data));
+  const prompt = s.readShimPrompt();
+  assert.ok(prompt.includes('AVAILABLE MCP SERVERS / PLUGINS'), 'refs block present');
+  assert.ok(prompt.includes('github-mcp (mcp)'), 'MCP ref listed with kind');
+  assert.ok(prompt.includes('pony@ponytail (plugin)'), 'plugin ref listed');
+  assert.ok(prompt.includes('EXAMPLE_REFERENCE_CONTENT'), 'reference link content fetched into prompt');
+  assert.ok(prompt.includes('/example.md'), 'reference source URL cited');
+});
+
+test('generate-workflow-plan: refs and reference link included too', async () => {
+  const { status } = await s.api('POST', '/ai/generate-workflow-plan', {
+    goal: 'automate PR reviews',
+    provider: 'claude-cli',
+    mcpRefs: ['github-mcp'],
+    referenceUrl: `http://127.0.0.1:${OR_PORT}/example.md`,
+  });
+  assert.equal(status, 200);
+  const prompt = s.readShimPrompt();
+  assert.ok(prompt.includes('github-mcp (mcp)'));
+  assert.ok(prompt.includes('EXAMPLE_REFERENCE_CONTENT'));
+  assert.ok(prompt.trimEnd().endsWith('Goal: automate PR reviews'), 'goal stays last');
+});
+
+test('reference link validation: invalid and unreachable URLs -> 400', async () => {
+  const bad = await s.api('POST', '/ai/compose-workflow', { goal: 'x', provider: 'claude-cli', referenceUrl: 'not-a-url' });
+  assert.equal(bad.status, 400);
+  assert.match(bad.data.error, /Invalid reference URL/);
+  const dead = await s.api('POST', '/ai/compose-workflow', { goal: 'x', provider: 'claude-cli', referenceUrl: 'http://127.0.0.1:59322/gone.md' });
+  assert.equal(dead.status, 400);
+  assert.match(dead.data.error, /Could not fetch/);
+  const ftp = await s.api('POST', '/ai/compose-workflow', { goal: 'x', provider: 'claude-cli', referenceUrl: 'ftp://example.com/x' });
+  assert.equal(ftp.status, 400);
+});
+
+test('unknown mcpRef names still pass through (listed without description)', async () => {
+  const { status } = await s.api('POST', '/ai/compose-workflow', {
+    goal: 'y', provider: 'claude-cli', mcpRefs: ['not-installed-mcp'],
+  });
+  assert.equal(status, 200);
+  assert.ok(s.readShimPrompt().includes('not-installed-mcp (mcp)'));
 });
 
 test('ai-config PUT stores openrouter key and model', async () => {
