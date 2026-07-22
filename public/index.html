@@ -1,0 +1,1502 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Claude Manager</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%237c6af7'/><text x='50%' y='56%' text-anchor='middle' dominant-baseline='middle' font-size='18' font-weight='800' fill='white'>C</text></svg>">
+</head>
+<body>
+
+<!-- HEADER -->
+<div id="header">
+  <div class="logo">
+    <div class="logo-icon">C</div>
+    Claude Manager
+  </div>
+  <div class="folder-bar" id="folderBar" title="Click to change .claude folder">
+    <span class="folder-icon">📁</span>
+    <span id="folderPath">~/.claude</span>
+    <span class="edit-hint">✎</span>
+  </div>
+  <div class="header-actions">
+    <button class="icon-btn" id="themeToggle" title="Toggle theme">🌙</button>
+    <button class="icon-btn" id="refreshBtn" title="Refresh">↻</button>
+  </div>
+</div>
+
+<!-- FOLDER BANNER (shown when path is invalid/missing) -->
+<div id="folder-banner" class="folder-banner" style="display:none">
+  <span id="folder-banner-msg">Folder not found</span>
+  <button class="btn btn-sm btn-primary" onclick="document.getElementById('folderBar').click()">Change folder</button>
+</div>
+
+<!-- APP BODY -->
+<div id="app">
+  <!-- SIDEBAR -->
+  <nav id="sidebar">
+    <div class="nav-section-label">Main</div>
+    <button class="nav-item active" data-section="overview">
+      <span class="nav-icon">🏠</span> Overview
+    </button>
+    <button class="nav-item" data-section="claude-md">
+      <span class="nav-icon">📄</span> CLAUDE.md
+    </button>
+
+    <div class="nav-section-label">Configuration</div>
+    <button class="nav-item" data-section="settings">
+      <span class="nav-icon">⚙️</span> Settings
+    </button>
+    <button class="nav-item" data-section="hooks">
+      <span class="nav-icon">🔗</span> Hooks
+      <span class="nav-badge" id="badge-hooks">0</span>
+    </button>
+
+    <div class="nav-section-label">Extensions</div>
+    <button class="nav-item" data-section="skills">
+      <span class="nav-icon">🧩</span> Skills
+      <span class="nav-badge" id="badge-skills">0</span>
+    </button>
+    <button class="nav-item" data-section="agents">
+      <span class="nav-icon">🤖</span> Agents
+      <span class="nav-badge" id="badge-agents">0</span>
+    </button>
+    <button class="nav-item" data-section="plugins">
+      <span class="nav-icon">🔌</span> Plugins
+      <span class="nav-badge" id="badge-plugins">0</span>
+    </button>
+    <button class="nav-item" data-section="commands">
+      <span class="nav-icon">⌨️</span> Commands
+      <span class="nav-badge" id="badge-commands">0</span>
+    </button>
+    <button class="nav-item" data-section="keybindings">
+      <span class="nav-icon">🎹</span> Keybindings
+    </button>
+    <button class="nav-item" data-section="examples">
+      <span class="nav-icon">📚</span> Examples
+    </button>
+    <button class="nav-item" data-section="workflows">
+      <span class="nav-icon">🔄</span> Workflows
+    </button>
+  </nav>
+
+  <!-- MAIN CONTENT -->
+  <main id="main">
+
+    <!-- ===== OVERVIEW ===== -->
+    <div class="section active" id="section-overview">
+      <div class="section-header">
+        <div>
+          <div class="section-title">Overview</div>
+          <div class="section-subtitle" id="overview-path"></div>
+        </div>
+      </div>
+      <div class="stat-grid" id="stat-grid"></div>
+      <div class="card" id="overview-info"></div>
+    </div>
+
+    <!-- ===== CLAUDE.MD ===== -->
+    <div class="section" id="section-claude-md" style="flex:1">
+      <div class="section-header">
+        <div>
+          <div class="section-title">CLAUDE.md</div>
+          <div class="section-subtitle">Main instructions file for Claude Code</div>
+        </div>
+        <button class="btn btn-primary" id="saveClaudeMd">Save</button>
+      </div>
+      <div style="flex:1;min-height:0;" id="claude-md-editor-wrap"></div>
+    </div>
+
+    <!-- ===== SETTINGS ===== -->
+    <div class="section" id="section-settings">
+      <div class="section-header">
+        <div>
+          <div class="section-title">Settings</div>
+          <div class="section-subtitle">settings.json configuration</div>
+        </div>
+        <button class="btn btn-primary" id="saveSettings">Save</button>
+      </div>
+      <div class="tabs" id="settings-tabs">
+        <button class="tab active" data-tab="general">General</button>
+        <button class="tab" data-tab="hooks-settings">Hooks</button>
+        <button class="tab" data-tab="permissions">Permissions</button>
+        <button class="tab" data-tab="env-vars">Env Vars</button>
+        <button class="tab" data-tab="raw-json">Raw JSON</button>
+        <button class="tab" data-tab="ai">AI Generation</button>
+      </div>
+      <div id="settings-tab-general" class="tab-content active">
+        <div class="card" style="margin-top:16px">
+          <div style="display:flex;flex-direction:column;gap:20px">
+            <div class="form-group">
+              <label class="form-label">Default Model</label>
+              <select id="settings-model" style="max-width:300px">
+                <option value="">System default</option>
+                <option value="claude-sonnet-4-6">claude-sonnet-4-6 (Sonnet 4.6)</option>
+                <option value="claude-opus-4-7">claude-opus-4-7 (Opus 4.7)</option>
+                <option value="claude-haiku-4-5-20251001">claude-haiku-4-5 (Haiku 4.5)</option>
+                <option value="sonnet">sonnet (alias)</option>
+                <option value="opus">opus (alias)</option>
+                <option value="haiku">haiku (alias)</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div id="settings-tab-hooks-settings" class="tab-content" style="margin-top:16px">
+        <div id="hooks-settings-ui"></div>
+      </div>
+      <div id="settings-tab-permissions" class="tab-content" style="margin-top:16px">
+        <div class="card">
+          <div style="display:flex;flex-direction:column;gap:20px">
+            <div class="form-group">
+              <label class="form-label">Allow List</label>
+              <div id="allow-tags" class="tag-list"></div>
+              <div class="tag-add-row">
+                <input type="text" id="allow-input" placeholder="Add allowed tool or pattern..." style="max-width:300px">
+                <button class="btn btn-secondary btn-sm" id="add-allow">+ Add</button>
+              </div>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Deny List</label>
+              <div id="deny-tags" class="tag-list"></div>
+              <div class="tag-add-row">
+                <input type="text" id="deny-input" placeholder="Add denied tool or pattern..." style="max-width:300px">
+                <button class="btn btn-secondary btn-sm" id="add-deny">+ Add</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div id="settings-tab-env-vars" class="tab-content" style="margin-top:16px">
+        <div class="card">
+          <div id="env-var-rows"></div>
+          <button class="btn btn-secondary btn-sm mt-2" id="add-env-var">+ Add Variable</button>
+        </div>
+      </div>
+      <div id="settings-tab-raw-json" class="tab-content" style="margin-top:16px;height:500px">
+        <div id="settings-raw-editor" style="height:100%;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden"></div>
+      </div>
+      <div id="settings-tab-ai" class="tab-content" style="margin-top:16px">
+        <div class="card">
+          <div style="display:flex;flex-direction:column;gap:20px">
+            <div>
+              <div class="form-label" style="margin-bottom:8px">Claude CLI</div>
+              <div id="cliSettingsStatus" style="font-size:13px;padding:10px 14px;border-radius:8px;background:var(--surface2);display:flex;align-items:center;gap:8px;color:var(--text-muted)">
+                <span id="cliStatusDot">●</span><span id="cliStatusText">Checking…</span>
+              </div>
+              <div class="hint">Skill generator uses <code>claude -p</code> (non-interactive mode). Install Claude Code CLI to enable this provider.</div>
+            </div>
+            <div>
+              <div class="form-label" style="margin-bottom:4px">OpenRouter API Key</div>
+              <div class="hint" style="margin-bottom:8px">Access 100+ models via openrouter.ai — no Claude CLI needed.</div>
+              <div style="display:flex;gap:8px;align-items:center">
+                <input type="password" id="orApiKey" placeholder="sk-or-v1-…" style="flex:1">
+                <button class="btn btn-secondary" id="testOrKey">Test</button>
+              </div>
+            </div>
+            <div class="form-group" style="margin-bottom:0">
+              <label class="form-label">Default Model</label>
+              <select id="orModelSelect">
+                <option value="anthropic/claude-sonnet-4-5">anthropic/claude-sonnet-4-5 (Recommended)</option>
+                <option value="anthropic/claude-opus-4-5">anthropic/claude-opus-4-5</option>
+                <option value="anthropic/claude-haiku-4-5">anthropic/claude-haiku-4-5 (Fast)</option>
+                <option value="openai/gpt-4o">openai/gpt-4o</option>
+                <option value="openai/gpt-4o-mini">openai/gpt-4o-mini</option>
+                <option value="google/gemini-2.5-flash">google/gemini-2.5-flash</option>
+                <option value="meta-llama/llama-3.3-70b-instruct">meta-llama/llama-3.3-70b-instruct</option>
+              </select>
+            </div>
+            <div><button class="btn btn-primary" id="saveAiSettings">Save AI Settings</button></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== HOOKS ===== -->
+    <div class="section" id="section-hooks">
+      <div class="section-header">
+        <div>
+          <div class="section-title">Hooks</div>
+          <div class="section-subtitle">Lifecycle hooks and hook scripts</div>
+        </div>
+        <div style="display:flex;gap:8px" id="hooksInstalledActions">
+          <button class="btn btn-secondary" onclick="showSkillGenerator('hook')">✨ Generate with AI</button>
+          <button class="btn btn-primary" id="newHookFileBtn">+ New Hook File</button>
+        </div>
+      </div>
+      <!-- Tabs -->
+      <div class="plugin-tabs">
+        <button class="hook-tab active" data-hook-tab="installed">Installed</button>
+        <button class="hook-tab" data-hook-tab="store">🏪 Hook Store</button>
+      </div>
+      <!-- Installed panel -->
+      <div id="hooks-installed-panel" style="margin-top:16px">
+        <div class="hooks-layout">
+          <div>
+            <div style="font-size:13px;font-weight:600;color:var(--text-muted);margin-bottom:10px;text-transform:uppercase;letter-spacing:.06em">Hook Events (settings.json)</div>
+            <div id="hook-events-list"></div>
+            <button class="btn btn-secondary btn-sm mt-2" id="addHookEventBtn">+ Add Hook…</button>
+          </div>
+          <div>
+            <div style="font-size:13px;font-weight:600;color:var(--text-muted);margin-bottom:10px;text-transform:uppercase;letter-spacing:.06em">Hook Files (hooks/)</div>
+            <div id="hook-files-list"></div>
+            <div id="hook-elsewhere-wrap"></div>
+          </div>
+        </div>
+      </div>
+      <!-- Hook Store panel -->
+      <div id="hooks-store-panel" style="display:none;margin-top:16px">
+        <div class="store-filter-bar">
+          <input type="text" id="hookStoreSearch" placeholder="Search hooks…">
+          <select id="hookStoreSourceFilter"><option value="">All Sources</option></select>
+          <button class="btn btn-secondary btn-sm" id="hookStoreSourcesBtn" onclick="document.getElementById('hookSourcesPanel').style.display=document.getElementById('hookSourcesPanel').style.display==='none'?'':'none'">⚙️ Sources</button>
+          <button class="btn btn-secondary btn-sm" id="hookStoreRefresh">↻ Refresh</button>
+        </div>
+        <div id="hookSourcesPanel" style="display:none;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:16px;margin-bottom:14px">
+          <div style="font-weight:600;font-size:13px;margin-bottom:10px">Hook Store Sources</div>
+          <div id="hookSourcesList"></div>
+          <details style="margin-top:12px">
+            <summary style="cursor:pointer;font-size:13px;color:var(--accent)">+ Add Custom Source</summary>
+            <div style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:8px">
+              <input type="text" id="hookSrcName" placeholder="Name (e.g. My Hook Repo)">
+              <input type="text" id="hookSrcRepo" placeholder="owner/repo">
+              <input type="text" id="hookSrcPath" placeholder="Path in repo (e.g. hooks)">
+              <input type="text" id="hookSrcBranch" placeholder="Branch (default: main)">
+              <input type="text" id="hookSrcExt" placeholder="Extension (default: .mjs)">
+              <button class="btn btn-primary btn-sm" onclick="addHookSource()">Add Source</button>
+            </div>
+          </details>
+        </div>
+        <div id="hooks-store-grid"></div>
+      </div>
+    </div>
+
+    <!-- ===== SKILLS ===== -->
+    <div class="section" id="section-skills">
+      <div class="section-header">
+        <div>
+          <div class="section-title">Skills</div>
+          <div class="section-subtitle">Custom skills in ~/.claude/skills/</div>
+        </div>
+        <div style="display:flex;gap:8px" id="skillsInstalledActions">
+          <button class="btn btn-secondary" id="skillGenBtn">✨ Generate with AI</button>
+          <button class="btn btn-primary" id="newSkillBtn">+ New Skill</button>
+        </div>
+      </div>
+      <!-- Tabs -->
+      <div class="plugin-tabs">
+        <button class="skill-tab active" data-skill-tab="installed">Installed</button>
+        <button class="skill-tab" data-skill-tab="store">🏪 Skill Store</button>
+      </div>
+      <!-- Installed panel -->
+      <div id="skills-installed-panel" style="margin-top:16px">
+        <div class="card-grid" id="skills-grid"></div>
+      </div>
+      <!-- Skill Store panel -->
+      <div id="skills-store-panel" style="display:none;margin-top:16px">
+        <!-- Toolbar: search + filter + actions -->
+        <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center;flex-wrap:wrap">
+          <input type="text" id="skillStoreSearch" placeholder="🔍 Search skills…" style="flex:1;min-width:160px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:7px 10px;color:var(--text);font-size:13px;outline:none">
+          <select id="skillStoreSourceFilter" style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:7px 10px;color:var(--text);font-size:13px;outline:none">
+            <option value="all">All sources</option>
+          </select>
+          <button class="btn btn-ghost btn-sm" id="skillStoreManageSources" title="Manage sources">⚙️ Sources</button>
+          <button class="btn btn-ghost btn-sm" id="skillStoreRefresh" title="Refresh">↺</button>
+        </div>
+
+        <!-- Sources management panel (collapsible) -->
+        <div id="skillSourcesPanel" style="display:none;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:14px;margin-bottom:14px">
+          <div style="font-size:12px;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">Skill Sources</div>
+          <div id="skillSourcesList"></div>
+          <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">
+            <div style="font-size:12px;font-weight:600;margin-bottom:8px">Add GitHub source</div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <input type="text" id="addSrcName" placeholder="Display name" style="width:130px;background:var(--surface3);border:1px solid var(--border);border-radius:var(--radius);padding:6px 8px;color:var(--text);font-size:12px;outline:none">
+              <input type="text" id="addSrcRepo" placeholder="owner/repo" style="width:160px;background:var(--surface3);border:1px solid var(--border);border-radius:var(--radius);padding:6px 8px;color:var(--text);font-size:12px;outline:none">
+              <input type="text" id="addSrcPath" placeholder="skills (folder)" style="width:110px;background:var(--surface3);border:1px solid var(--border);border-radius:var(--radius);padding:6px 8px;color:var(--text);font-size:12px;outline:none">
+              <input type="text" id="addSrcBranch" placeholder="main" style="width:70px;background:var(--surface3);border:1px solid var(--border);border-radius:var(--radius);padding:6px 8px;color:var(--text);font-size:12px;outline:none">
+              <button class="btn btn-primary btn-sm" id="addSkillSourceBtn">+ Add</button>
+            </div>
+            <div style="font-size:11px;color:var(--text-dim);margin-top:5px">Each skill in the folder must have a SKILL.md file. Example: <code>myuser/my-skills</code> with folder <code>skills</code></div>
+          </div>
+        </div>
+
+        <div id="skills-store-grid" class="card-grid"></div>
+      </div>
+    </div>
+
+    <!-- ===== AGENTS ===== -->
+    <div class="section" id="section-agents">
+      <div class="section-header">
+        <div>
+          <div class="section-title">Agents</div>
+          <div class="section-subtitle">Custom agents in ~/.claude/agents/</div>
+        </div>
+        <div style="display:flex;gap:8px" id="agentsInstalledActions">
+          <button class="btn btn-secondary" onclick="showSkillGenerator('agent')">✨ Generate with AI</button>
+          <button class="btn btn-primary" id="newAgentBtn">+ New Agent</button>
+        </div>
+      </div>
+      <!-- Tabs -->
+      <div class="plugin-tabs">
+        <button class="agent-tab active" data-agent-tab="installed">Installed</button>
+        <button class="agent-tab" data-agent-tab="store">🏪 Agent Store</button>
+      </div>
+      <!-- Installed panel -->
+      <div id="agents-installed-panel" style="margin-top:16px">
+        <div class="card-grid" id="agents-grid"></div>
+      </div>
+      <!-- Agent Store panel -->
+      <div id="agents-store-panel" style="display:none;margin-top:16px">
+        <div class="store-filter-bar">
+          <input type="text" id="agentStoreSearch" placeholder="Search agents…">
+          <select id="agentStoreSourceFilter"><option value="">All Sources</option></select>
+          <button class="btn btn-secondary btn-sm" id="agentStoreSourcesBtn" onclick="document.getElementById('agentSourcesPanel').style.display=document.getElementById('agentSourcesPanel').style.display==='none'?'':'none'">⚙️ Sources</button>
+          <button class="btn btn-secondary btn-sm" id="agentStoreRefresh">↻ Refresh</button>
+        </div>
+        <div id="agentSourcesPanel" style="display:none;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:16px;margin-bottom:14px">
+          <div style="font-weight:600;font-size:13px;margin-bottom:10px">Agent Store Sources</div>
+          <div id="agentSourcesList"></div>
+          <details style="margin-top:12px">
+            <summary style="cursor:pointer;font-size:13px;color:var(--accent)">+ Add Custom Source</summary>
+            <div style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:8px">
+              <input type="text" id="agentSrcName" placeholder="Name (e.g. My Agents)">
+              <input type="text" id="agentSrcRepo" placeholder="owner/repo">
+              <input type="text" id="agentSrcPath" placeholder="Path in repo (e.g. agents)">
+              <input type="text" id="agentSrcBranch" placeholder="Branch (default: main)">
+              <button class="btn btn-primary btn-sm" onclick="addAgentSource()">Add Source</button>
+            </div>
+          </details>
+        </div>
+        <div id="agents-store-grid"></div>
+      </div>
+    </div>
+
+    <!-- ===== PLUGINS ===== -->
+    <div class="section" id="section-plugins">
+      <div class="section-header">
+        <div>
+          <div class="section-title">Plugins &amp; MCP Servers</div>
+          <div class="section-subtitle">Install and manage MCP servers for Claude Code</div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-secondary" id="check-updates-btn" onclick="checkPluginUpdates()">Check for Updates</button>
+          <button class="btn btn-primary" id="addMcpBtn">+ Add MCP Server</button>
+        </div>
+      </div>
+      <!-- Tabs -->
+      <div class="plugin-tabs">
+        <button class="plugin-tab active" data-tab="installed">Installed</button>
+        <button class="plugin-tab" data-tab="marketplace">🛒 Marketplace</button>
+      </div>
+      <!-- Installed panel -->
+      <div id="plugins-installed-panel">
+        <div id="plugins-summary" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px"></div>
+        <div class="card table-wrap">
+          <table id="plugins-table">
+            <thead>
+              <tr>
+                <th>Plugin</th>
+                <th>Version</th>
+                <th>Installed</th>
+                <th>Last Updated</th>
+                <th>Update</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="plugins-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+      <!-- Marketplace panel -->
+      <div id="plugins-marketplace-panel" style="display:none">
+        <!-- Top bar: search + manage sources -->
+        <div class="mkt-topbar">
+          <input type="text" id="mktSearch" class="mkt-search" placeholder="🔍  Search plugins and MCP servers…">
+          <button class="btn btn-secondary btn-sm" id="mktSourcesBtn">⚙ Sources</button>
+        </div>
+
+        <!-- Sources management panel (collapsible) -->
+        <div id="mktSourcesPanel" class="mkt-sources-panel" style="display:none">
+          <div class="mkt-sources-header">
+            <span style="font-weight:600;font-size:13px">Marketplace Sources</span>
+            <button class="btn btn-primary btn-sm" id="mktAddSourceBtn">+ Add Source</button>
+          </div>
+          <div id="mktSourcesList" class="mkt-sources-list"></div>
+        </div>
+
+        <!-- Source filter tabs -->
+        <div id="mktSourceTabs" class="mkt-source-tabs">
+          <button class="mkt-src-tab active" data-src="all">All</button>
+          <button class="mkt-src-tab" data-src="official">🏛️ Official</button>
+          <button class="mkt-src-tab" data-src="npm-mcp">📦 NPM</button>
+        </div>
+
+        <!-- Category filters -->
+        <div class="marketplace-filters" id="marketplace-filters">
+          <button class="mkt-cat active" data-cat="All">All categories</button>
+          <button class="mkt-cat" data-cat="Files">Files</button>
+          <button class="mkt-cat" data-cat="DevTools">DevTools</button>
+          <button class="mkt-cat" data-cat="Database">Database</button>
+          <button class="mkt-cat" data-cat="Search">Search</button>
+          <button class="mkt-cat" data-cat="Web">Web</button>
+          <button class="mkt-cat" data-cat="Automation">Automation</button>
+          <button class="mkt-cat" data-cat="Productivity">Productivity</button>
+          <button class="mkt-cat" data-cat="Design">Design</button>
+          <button class="mkt-cat" data-cat="Maps">Maps</button>
+          <button class="mkt-cat" data-cat="NPM">NPM</button>
+          <button class="mkt-cat" data-cat="Other">Other</button>
+        </div>
+
+        <div id="marketplace-grid" class="marketplace-grid"></div>
+      </div>
+    </div>
+
+    <!-- ===== COMMANDS ===== -->
+    <div class="section" id="section-commands">
+      <div class="section-header">
+        <div>
+          <div class="section-title">Commands</div>
+          <div class="section-subtitle">Custom slash commands in ~/.claude/commands/</div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-secondary" onclick="showSkillGenerator('command')">✨ Generate with AI</button>
+          <button class="btn btn-primary" id="newCommandBtn">+ New Command</button>
+        </div>
+      </div>
+      <div class="card-grid" id="commands-grid"></div>
+    </div>
+
+    <!-- ===== KEYBINDINGS ===== -->
+    <div class="section" id="section-keybindings" style="flex:1">
+      <div class="section-header">
+        <div>
+          <div class="section-title">Keybindings</div>
+          <div class="section-subtitle">Custom keyboard shortcuts (keybindings.json)</div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-secondary" id="keybindingsCreateBtn" style="display:none">Create File</button>
+          <button class="btn btn-primary" id="saveKeybindings">Save</button>
+        </div>
+      </div>
+      <div id="keybindings-info" class="alert alert-info" style="display:none">
+        keybindings.json does not exist yet. Click "Create File" to start, or just edit and save.
+      </div>
+      <div style="flex:1;min-height:0;height:500px" id="keybindings-editor-wrap"></div>
+    </div>
+
+    <!-- ===== EXAMPLES ===== -->
+    <div class="section" id="section-workflows"></div>
+
+    <div class="section" id="section-examples">
+      <div class="section-header">
+        <div>
+          <div class="section-title">Examples</div>
+          <div class="section-subtitle">Annotated real-world examples — every line explained</div>
+        </div>
+      </div>
+      <div id="examples-filter-tabs" class="examples-filter-tabs"></div>
+      <div id="examples-grid" class="examples-grid"></div>
+    </div>
+
+  </main>
+</div>
+
+<!-- ===== EDITOR OVERLAY ===== -->
+<div class="overlay" id="editorOverlay">
+  <div class="overlay-panel">
+    <div class="overlay-header">
+      <div class="overlay-title" id="overlayTitle">Edit</div>
+      <div class="overlay-actions">
+        <button class="icon-btn btn-sm" id="overlayRefBtn" title="Toggle field reference">? Reference</button>
+        <button class="btn btn-secondary btn-sm" id="overlayDiscard">Discard</button>
+        <button class="btn btn-primary btn-sm" id="overlaySave">Save</button>
+      </div>
+    </div>
+    <div class="overlay-panel-inner">
+      <div class="overlay-editor" id="overlayEditorWrap"></div>
+      <div class="reference-panel collapsed" id="referencePanel"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== HOOK ADD MODAL ===== -->
+<div class="overlay" id="hookAddModal">
+  <div class="folder-dialog" style="width:520px">
+    <h3 id="hookAddTitle">Add Hook</h3>
+    <p id="hookAddSubtitle" style="color:var(--text-muted);font-size:12px;margin:6px 0 16px"></p>
+
+    <div id="hookEventGroup" class="form-group" style="margin-bottom:16px;display:none">
+      <label class="form-label">Event</label>
+      <select id="hookEventSelect">
+        <option value="">Select event…</option>
+        <optgroup label="Tool events (support tool matcher)">
+          <option value="PreToolUse">PreToolUse — before any tool runs; can block</option>
+          <option value="PostToolUse">PostToolUse — after any tool completes</option>
+          <option value="PostToolUseFailure">PostToolUseFailure — when a tool call fails</option>
+          <option value="PermissionRequest">PermissionRequest — when Claude asks permission</option>
+          <option value="PermissionDenied">PermissionDenied — when permission is denied</option>
+        </optgroup>
+        <optgroup label="Session events">
+          <option value="SessionStart">SessionStart — session begins (matcher: startup|resume|clear|compact|fork)</option>
+          <option value="SessionEnd">SessionEnd — session ends (matcher: clear|resume|logout|other)</option>
+          <option value="Setup">Setup — triggered by --init-only or --maintenance</option>
+          <option value="UserPromptSubmit">UserPromptSubmit — user sends a message</option>
+        </optgroup>
+        <optgroup label="Response events">
+          <option value="Stop">Stop — Claude finishes responding</option>
+          <option value="StopFailure">StopFailure — response ended with an error</option>
+          <option value="Notification">Notification — Claude sends a notification</option>
+        </optgroup>
+        <optgroup label="Subagent events">
+          <option value="SubagentStart">SubagentStart — a subagent is spawned</option>
+          <option value="SubagentStop">SubagentStop — a subagent finishes</option>
+        </optgroup>
+        <optgroup label="Context events">
+          <option value="PreCompact">PreCompact — before context compaction</option>
+          <option value="PostCompact">PostCompact — after context compaction</option>
+          <option value="ConfigChange">ConfigChange — settings file changed</option>
+          <option value="CwdChanged">CwdChanged — working directory changed</option>
+          <option value="FileChanged">FileChanged — watched file changed on disk</option>
+        </optgroup>
+      </select>
+    </div>
+
+    <div id="hookMatcherGroup" class="form-group" style="margin-bottom:16px">
+      <label class="form-label">
+        Tool matcher (regex)
+        <span style="color:var(--text-dim);font-weight:400;text-transform:none;font-size:11px">— optional</span>
+      </label>
+      <input type="text" id="hookMatcherInput" placeholder="e.g.  Edit   or   Edit|Write   or   mcp__memory__.*">
+      <div class="matcher-examples">
+        <span class="matcher-ex-label">Examples:</span>
+        <button class="matcher-chip" data-val="Edit">Edit</button>
+        <button class="matcher-chip" data-val="Write">Write</button>
+        <button class="matcher-chip" data-val="Bash">Bash</button>
+        <button class="matcher-chip" data-val="Edit|Write">Edit|Write</button>
+        <button class="matcher-chip" data-val="Edit|Write|Bash">Edit|Write|Bash</button>
+        <button class="matcher-chip" data-val="mcp__.*">mcp__.*</button>
+      </div>
+      <div style="font-size:11px;color:var(--text-dim);margin-top:5px">
+        Regex matched against the tool name. Use <code style="background:var(--surface3);padding:1px 4px;border-radius:3px">|</code> for OR: <code style="background:var(--surface3);padding:1px 4px;border-radius:3px">Edit|Write</code> matches either. Leave blank to run for <strong>every</strong> tool call.
+      </div>
+    </div>
+
+    <div class="form-group" style="margin-bottom:12px">
+      <label class="form-label">Command to run</label>
+      <input type="text" id="hookCommandInput" placeholder="e.g.  ~/.claude/hooks/my-hook.mjs  or  python3 ~/.claude/hooks/my-hook.py">
+      <div style="font-size:11px;color:var(--text-dim);margin-top:5px">
+        Any shell command or path to an <code style="background:var(--surface3);padding:1px 4px;border-radius:3px">.mjs</code> script. The hook receives tool name, inputs, and response as JSON on <strong>stdin</strong>. Use "New Hook File" above to create the script first.
+      </div>
+    </div>
+
+    <div id="hookFileSuggestions" style="margin-bottom:10px"></div>
+
+    <div style="margin-bottom:12px">
+      <button class="btn btn-secondary btn-sm" type="button" id="hookGenToggle" onclick="toggleHookGenPanel()">✨ Generate with AI</button>
+    </div>
+
+    <!-- Inline AI generator -->
+    <div id="hookGenPanel" style="display:none;border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:14px;background:var(--surface2)">
+      <div class="form-group" style="margin-bottom:10px">
+        <label class="form-label">Describe what you want this hook to do</label>
+        <textarea id="hookGenDesc" rows="3" placeholder="e.g. After every Bash command, log the tool name and exit code to ~/.claude/bash-audit.jsonl" style="width:100%;resize:vertical;font-size:13px;font-family:inherit;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:8px 10px;color:var(--text);outline:none"></textarea>
+      </div>
+      <div class="form-group" style="margin-bottom:12px">
+        <label class="form-label">Language</label>
+        <div class="hook-runtime-grid" style="margin-top:6px">
+          <button class="hook-runtime-btn active" data-hg-lang="mjs" onclick="setHookGenLang('mjs',this)">⚡ Node.js<span>ESM (.mjs)</span></button>
+          <button class="hook-runtime-btn" data-hg-lang="py" onclick="setHookGenLang('py',this)">🐍 Python<span>Python 3 (.py)</span></button>
+          <button class="hook-runtime-btn" data-hg-lang="sh" onclick="setHookGenLang('sh',this)">🐚 Bash<span>Shell (.sh)</span></button>
+        </div>
+      </div>
+      <button class="btn btn-primary btn-sm" id="hookGenRunBtn" onclick="runHookGenInModal()">✨ Generate</button>
+      <div id="hookGenPreview" style="display:none;margin-top:14px">
+        <div style="font-size:12px;font-weight:600;color:var(--text-muted);margin-bottom:6px">Generated hook — review before saving:</div>
+        <pre id="hookGenCode" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:12px;font-size:11px;overflow:auto;max-height:220px;white-space:pre-wrap;word-break:break-word;margin:0"></pre>
+        <div id="hookGenFilename" style="font-size:11px;color:var(--text-dim);margin:6px 0 10px;font-family:'SF Mono','Fira Code',monospace"></div>
+        <button class="btn btn-primary btn-sm" id="hookGenUseBtn" onclick="useGeneratedHook()">✓ Save file &amp; use as command</button>
+      </div>
+      <div id="hookGenError" style="display:none;color:var(--danger);font-size:12px;margin-top:8px"></div>
+    </div>
+
+    <div class="folder-dialog-actions">
+      <button class="btn btn-ghost" id="hookAddCancel">Cancel</button>
+      <button class="btn btn-primary" id="hookAddConfirm">Add Hook</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== TEMPLATE GALLERY MODAL ===== -->
+<div class="overlay" id="templateModal">
+  <div class="template-gallery">
+    <div class="template-gallery-header">
+      <div>
+        <h3 id="templateModalTitle">New Skill</h3>
+        <div style="font-size:12px;color:var(--text-muted);margin-top:3px" id="templateModalSubtitle"></div>
+      </div>
+      <button class="icon-btn" id="templateModalClose">✕</button>
+    </div>
+    <div class="template-gallery-body">
+      <!-- Left: template list + name input -->
+      <div class="template-list-col">
+        <!-- Runtime picker — shown only for hook-file type -->
+        <div id="hookRuntimePicker" style="display:none;margin-bottom:12px">
+          <div class="template-col-label" style="margin-bottom:5px">Runtime</div>
+          <div class="hook-runtime-grid">
+            <button class="hook-runtime-btn active" data-ext=".mjs">⚡ Node.js<span>All platforms</span></button>
+            <button class="hook-runtime-btn" data-ext=".py">🐍 Python<span>All* (if installed)</span></button>
+            <button class="hook-runtime-btn" data-ext=".sh">🐚 Shell<span class="platform-warn">macOS / Linux</span></button>
+            <button class="hook-runtime-btn" data-ext=".ps1">💠 PowerShell<span>All* (if installed)</span></button>
+            <button class="hook-runtime-btn" data-ext=".cmd">🪟 Batch<span class="platform-warn">Windows only</span></button>
+          </div>
+          <div id="hookRuntimeWarning" class="hook-runtime-warning" style="display:none"></div>
+        </div>
+        <div class="template-col-label">Templates</div>
+        <div id="templateCardList"></div>
+        <hr class="divider" style="margin:14px 0">
+        <div class="form-group">
+          <label class="form-label">Name</label>
+          <input type="text" id="templateNameInput" placeholder="my-name" autocomplete="off" spellcheck="false">
+          <div style="font-size:11px;color:var(--text-dim);margin-top:4px">Alphanumeric, hyphens, underscores only.</div>
+        </div>
+      </div>
+      <!-- Right: code preview + field reference table -->
+      <div class="template-preview-col">
+        <div class="template-col-label">Template Preview</div>
+        <pre id="templatePreviewContent" class="template-preview-code"></pre>
+        <div id="templateFieldRef" class="template-field-ref"></div>
+      </div>
+    </div>
+    <div class="template-gallery-footer">
+      <button class="btn btn-ghost" id="templateModalCancel">Cancel</button>
+      <button class="btn btn-primary" id="templateModalOpen">Open Editor →</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== ADD MCP SERVER MODAL (guided fields, no raw JSON) ===== -->
+<div class="overlay" id="addMcpModal">
+  <div class="skill-gen-dialog" style="max-width:560px">
+    <div class="skill-gen-header">
+      <div>
+        <h3 style="margin:0 0 2px">＋ Add MCP Server</h3>
+        <p style="margin:0;font-size:12px;color:var(--text-muted)">Fill in the fields — the JSON config is written to settings.json for you</p>
+      </div>
+      <button class="icon-btn" id="addMcpClose">✕</button>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Server name <span style="font-weight:400;color:var(--text-dim)">(identifier, e.g. <code>github</code>)</span></label>
+      <input type="text" id="mcpName" placeholder="my-server">
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Connection type</label>
+      <div style="display:flex;gap:6px;margin-top:4px">
+        <button class="gen-type-tab active" id="mcpTypeStdio" type="button">💻 Local command <span style="font-size:10px;opacity:.7">stdio</span></button>
+        <button class="gen-type-tab" id="mcpTypeRemote" type="button">🌐 Remote URL <span style="font-size:10px;opacity:.7">SSE / HTTP</span></button>
+      </div>
+    </div>
+
+    <div id="mcpStdioFields">
+      <div class="form-group">
+        <label class="form-label">Command <span style="font-weight:400;color:var(--text-dim)">(the executable, e.g. <code>npx</code>)</span></label>
+        <input type="text" id="mcpCommand" placeholder="npx">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Arguments <span style="font-weight:400;color:var(--text-dim)">(one per line)</span></label>
+        <textarea id="mcpArgs" rows="3" placeholder="-y&#10;@modelcontextprotocol/server-github"></textarea>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Environment variables <span style="font-weight:400;color:var(--text-dim)">(KEY=value, one per line — optional)</span></label>
+        <textarea id="mcpEnv" rows="2" placeholder="GITHUB_TOKEN=ghp_yourtoken"></textarea>
+      </div>
+    </div>
+
+    <div id="mcpRemoteFields" style="display:none">
+      <div class="form-group">
+        <label class="form-label">Server URL</label>
+        <input type="url" id="mcpUrl" placeholder="https://example.com/mcp/sse">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Protocol</label>
+        <select id="mcpRemoteType" style="width:100%">
+          <option value="sse">SSE (Server-Sent Events)</option>
+          <option value="http">HTTP (Streamable)</option>
+        </select>
+      </div>
+    </div>
+
+    <div style="font-size:11px;color:var(--text-dim);margin-bottom:14px" id="mcpPreviewLabel">
+      Will write to <code>settings.json → mcpServers</code>. Restart Claude Code to activate.
+    </div>
+
+    <div class="folder-dialog-actions">
+      <button class="btn btn-ghost" id="addMcpCancel">Cancel</button>
+      <button class="btn btn-primary" id="addMcpSave">Add Server</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== COMPOSE WORKFLOW MODAL (from installed resources) ===== -->
+<div class="overlay" id="composeModal">
+  <div class="skill-gen-dialog" style="max-width:720px">
+    <div class="skill-gen-header">
+      <div>
+        <h3 style="margin:0 0 2px">🧬 Compose Workflow from Installed Resources</h3>
+        <p style="margin:0;font-size:12px;color:var(--text-muted)">AI checks whether your goal is achievable with the skills, agents, hooks &amp; commands you already have</p>
+      </div>
+      <button class="icon-btn" id="composeClose">✕</button>
+    </div>
+
+    <div id="composeSetup">
+      <div class="form-group">
+        <label class="form-label">What should the workflow do?</label>
+        <textarea id="composeGoal" rows="3" placeholder="e.g. every commit gets reviewed for security issues, then a conventional commit message is generated"></textarea>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Analyze with</label>
+        <div style="display:flex;gap:6px;margin-top:4px">
+          <button class="gen-type-tab active" id="composeProvCli" type="button">⚡ Claude CLI</button>
+          <button class="gen-type-tab" id="composeProvOr" type="button">🌐 OpenRouter</button>
+        </div>
+      </div>
+
+      <!-- OpenRouter config — key + model -->
+      <div id="composeOrConfig" style="display:none;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px;margin-bottom:14px">
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <div style="flex:1;min-width:200px">
+            <label class="form-label">OpenRouter API key <span id="composeOrKeyStatus" style="font-weight:400"></span></label>
+            <input type="password" id="composeOrKey" placeholder="sk-or-…" autocomplete="off">
+          </div>
+          <div style="flex:1;min-width:180px">
+            <label class="form-label">Model</label>
+            <select id="composeOrModel" style="width:100%">
+              <option value="anthropic/claude-sonnet-4-5">Claude Sonnet 4.5 (Recommended)</option>
+              <option value="anthropic/claude-opus-4-5">Claude Opus 4.5</option>
+              <option value="anthropic/claude-haiku-4-5">Claude Haiku 4.5 (Fast)</option>
+              <option value="openai/gpt-4o">GPT-4o</option>
+              <option value="openai/gpt-4o-mini">GPT-4o Mini</option>
+              <option value="google/gemini-2.5-flash">Gemini 2.5 Flash</option>
+              <option value="meta-llama/llama-3.3-70b-instruct">Llama 3.3 70B</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      <div id="composeInventoryNote" style="font-size:11px;color:var(--text-dim);margin-bottom:14px"></div>
+      <div class="folder-dialog-actions">
+        <button class="btn btn-ghost" id="composeCancel">Cancel</button>
+        <button class="btn btn-primary" id="composeAnalyze">🔍 Analyze Feasibility</button>
+      </div>
+    </div>
+
+    <div id="composeLoading" style="display:none;text-align:center;padding:40px 0">
+      <div class="spinner" style="margin:0 auto 12px"></div>
+      <div style="font-size:13px;color:var(--text-muted)">Checking your installed resources against the goal…</div>
+    </div>
+
+    <div id="composeResult" style="display:none">
+      <div id="composeVerdict" style="margin-bottom:12px"></div>
+      <div id="composeSummary" style="font-size:13px;margin-bottom:14px;line-height:1.5"></div>
+      <div id="composeExisting"></div>
+      <div id="composeMissing"></div>
+      <div id="composeGuide"></div>
+      <div class="folder-dialog-actions" style="margin-top:14px">
+        <button class="btn btn-ghost" id="composeBack">← Adjust Goal</button>
+        <button class="btn btn-primary" id="composeDone">Done</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== FILE EXPLORER MODAL (deep-dive into skills/folders) ===== -->
+<div class="overlay" id="fileExplorerModal">
+  <div class="skill-gen-dialog" style="max-width:700px">
+    <div class="skill-gen-header">
+      <div>
+        <h3 style="margin:0 0 2px" id="feTitle">📂 Files</h3>
+        <p style="margin:0;font-size:12px;color:var(--text-muted)">Every file in this folder — edit or explain any of them</p>
+      </div>
+      <button class="icon-btn" onclick="document.getElementById('fileExplorerModal').classList.remove('open')">✕</button>
+    </div>
+    <div id="feList" style="max-height:460px;overflow-y:auto"></div>
+    <div class="folder-dialog-actions" style="margin-top:12px">
+      <button class="btn btn-ghost" onclick="document.getElementById('fileExplorerModal').classList.remove('open')">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== ONE-SHOT RUN MODAL ===== -->
+<div class="overlay" id="runModal">
+  <div class="skill-gen-dialog" style="max-width:640px">
+    <div class="skill-gen-header">
+      <div>
+        <h3 style="margin:0 0 2px" id="runModalTitle">▶ Run</h3>
+        <p style="margin:0;font-size:12px;color:var(--text-muted)">One-shot, non-interactive run — output streams to a JSONL file</p>
+      </div>
+      <button class="icon-btn" id="runModalClose">✕</button>
+    </div>
+
+    <div id="runModalSetup">
+      <!-- What this artifact does + what arguments it accepts -->
+      <div id="runInfoBox" style="display:none;background:var(--accent-dim);border:1px solid color-mix(in srgb, var(--accent) 35%, transparent);border-radius:var(--radius-sm);padding:10px 12px;font-size:12px;margin-bottom:14px">
+        <div id="runInfoDesc" style="margin-bottom:4px"></div>
+        <div id="runInfoArgs" style="display:none"><strong>Accepts:</strong> <code id="runInfoArgsVal"></code></div>
+        <div id="runInfoWhen" style="display:none;color:var(--text-muted);margin-top:3px"></div>
+      </div>
+
+      <!-- Provider picker -->
+      <div class="form-group">
+        <label class="form-label">Run with</label>
+        <div style="display:flex;gap:6px;margin-top:4px">
+          <button class="gen-type-tab active" id="runProvCli" type="button">⚡ Claude CLI <span style="font-size:10px;opacity:.7">full run, executes tools</span></button>
+          <button class="gen-type-tab" id="runProvOr" type="button">🌐 OpenRouter <span style="font-size:10px;opacity:.7">text-only, no tools</span></button>
+        </div>
+        <div id="runProvNote" style="font-size:11px;color:var(--text-dim);margin-top:4px">Runs locally via <code>claude -p</code> with all permissions — Claude can edit files and run commands.</div>
+      </div>
+
+      <!-- OpenRouter config — key + model (runs only from this UI) -->
+      <div id="runOrConfig" style="display:none;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px;margin-bottom:14px">
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <div style="flex:1;min-width:200px">
+            <label class="form-label">OpenRouter API key <span id="runOrKeyStatus" style="font-weight:400"></span></label>
+            <input type="password" id="runOrKey" placeholder="sk-or-…" autocomplete="off">
+          </div>
+          <div style="flex:1;min-width:180px">
+            <label class="form-label">Model</label>
+            <select id="runOrModel" style="width:100%">
+              <option value="anthropic/claude-sonnet-4-5">Claude Sonnet 4.5 (Recommended)</option>
+              <option value="anthropic/claude-opus-4-5">Claude Opus 4.5</option>
+              <option value="anthropic/claude-haiku-4-5">Claude Haiku 4.5 (Fast)</option>
+              <option value="openai/gpt-4o">GPT-4o</option>
+              <option value="openai/gpt-4o-mini">GPT-4o Mini</option>
+              <option value="google/gemini-2.5-flash">Gemini 2.5 Flash</option>
+              <option value="meta-llama/llama-3.3-70b-instruct">Llama 3.3 70B</option>
+            </select>
+          </div>
+        </div>
+        <div style="font-size:11px;color:var(--text-dim);margin-top:8px">
+          ℹ OpenRouter runs exist <strong>only inside this UI</strong> — there is no terminal command for them. The model reads the definition + your task and writes its answer to the JSONL file. It cannot execute tools or touch files.
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" id="runTaskLabel">Task / arguments <span style="font-weight:400;color:var(--text-dim)">(what should it work on?)</span></label>
+        <textarea id="runTask" rows="3" placeholder="e.g. review the changes in src/auth/, or leave blank for the default behavior"></textarea>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Working directory</label>
+        <input type="text" id="runCwd" placeholder="~">
+        <div style="font-size:11px;color:var(--text-dim);margin-top:4px">The run executes in this folder — point it at the project you want it to work on.</div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Output JSONL file <span style="font-weight:400;color:var(--text-dim)">(path + name — created if missing)</span></label>
+        <input type="text" id="runOutputFile" placeholder="~/claude-runs/my-run.jsonl">
+        <div style="font-size:11px;color:var(--text-dim);margin-top:4px">Every event Claude emits (tool calls, text, result) is appended as one JSON line.</div>
+      </div>
+      <div id="runPermWarning" style="background:var(--warning-bg);border:1px solid color-mix(in srgb, var(--warning) 35%, transparent);border-radius:var(--radius-sm);padding:9px 12px;font-size:12px;color:var(--warning);margin-bottom:14px">
+        ⚠ Runs with <code>--dangerously-skip-permissions</code> — Claude can use all tools (edit files, run commands) in the working directory without asking. Only run things you trust.
+      </div>
+
+      <!-- Prefer to run it yourself? Copy the exact command -->
+      <details id="runManualWrap" style="margin-bottom:14px">
+        <summary style="cursor:pointer;font-size:12px;color:var(--text-muted)">💻 Run it yourself instead — copy the terminal command</summary>
+        <div style="display:flex;gap:6px;margin-top:8px;align-items:flex-start">
+          <textarea id="runManualCmd" readonly rows="3" style="flex:1;font-family:monospace;font-size:11px;background:var(--surface2)"></textarea>
+          <button class="btn btn-secondary btn-sm" id="runManualCopy" type="button">Copy</button>
+        </div>
+      </details>
+
+      <div class="folder-dialog-actions">
+        <button class="btn btn-ghost" id="runModalCancel">Cancel</button>
+        <button class="btn btn-primary" id="runModalStart">▶ Start Run</button>
+      </div>
+    </div>
+
+    <div id="runModalLive" style="display:none">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+        <span id="runStatusDot" style="width:10px;height:10px;border-radius:50%;background:var(--warning);animation:pulse 1.2s infinite"></span>
+        <span id="runStatusText" style="font-size:13px;font-weight:600">Running…</span>
+        <span id="runStatsText" style="font-size:12px;color:var(--text-muted);margin-left:auto"></span>
+      </div>
+      <pre id="runTail" style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px;font-size:11px;line-height:1.5;max-height:260px;overflow:auto;white-space:pre-wrap;word-break:break-all;margin-bottom:12px">Waiting for output…</pre>
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:12px">Streaming to: <code id="runFileLabel" style="font-size:11px"></code></div>
+      <div class="folder-dialog-actions">
+        <button class="btn btn-danger" id="runModalStop">■ Stop</button>
+        <button class="btn btn-primary" id="runModalDone" style="display:none">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== FOLDER DIALOG ===== -->
+<!-- ===== SKILL GENERATOR MODAL ===== -->
+<div class="overlay" id="skillGenModal">
+  <div class="skill-gen-dialog">
+    <div class="skill-gen-header">
+      <div>
+        <h3 style="margin:0 0 2px">✨ AI Generator</h3>
+        <p style="margin:0;font-size:12px;color:var(--text-muted)">Generate skills, agents, hooks, and commands with AI</p>
+      </div>
+      <button class="icon-btn" id="skillGenClose">✕</button>
+    </div>
+
+    <!-- Type selector tabs -->
+    <div class="gen-type-tabs">
+      <button class="gen-type-tab active" id="genTypeSkill">🧩 Skill</button>
+      <button class="gen-type-tab" id="genTypeAgent">🤖 Agent</button>
+      <button class="gen-type-tab" id="genTypeHook">🔗 Hook</button>
+      <button class="gen-type-tab" id="genTypeCommand">⌨️ Command</button>
+    </div>
+
+    <!-- State 1: Input -->
+    <div id="skillGenInput">
+      <!-- Hook language picker — only visible for hook type -->
+      <div id="sgHookLangPicker" style="display:none;margin-bottom:12px">
+        <label class="form-label">Language / runtime</label>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">
+          <button class="gen-type-tab active" id="sgLangMjs"  onclick="setSkillGenHookLang('.mjs')">⚡ Node.js <span style="font-size:10px;opacity:.7">.mjs</span></button>
+          <button class="gen-type-tab"        id="sgLangPy"   onclick="setSkillGenHookLang('.py')">🐍 Python <span style="font-size:10px;opacity:.7">.py</span></button>
+          <button class="gen-type-tab"        id="sgLangSh"   onclick="setSkillGenHookLang('.sh')">🐚 Bash/Shell <span style="font-size:10px;opacity:.7">.sh</span></button>
+        </div>
+        <div style="font-size:11px;color:var(--text-dim);margin-top:4px">Python and Bash require the runtime to be installed. Node.js is recommended for cross-platform use.</div>
+      </div>
+      <!-- Generation method -->
+      <div class="form-group" style="margin-bottom:12px">
+        <label class="form-label">Generation method</label>
+        <div style="display:flex;gap:8px;margin-top:6px">
+          <button class="wf-provider-btn active" id="sgMethodMeta" onclick="setSkillGenMethod('meta')">
+            <span>🎯 Meta Prompt</span>
+            <span style="font-size:10px;color:var(--text-dim)">Built-in optimised</span>
+          </button>
+          <button class="wf-provider-btn" id="sgMethodCreator" onclick="setSkillGenMethod('skill-creator')">
+            <span>🧩 Skill-Creator Skill</span>
+            <span id="sgCreatorStatus" style="font-size:10px;color:var(--text-dim)">Checking…</span>
+          </button>
+        </div>
+        <div id="sgCreatorPicker" style="display:none;margin-top:8px">
+          <!-- Shows active creator name; hidden select used when multiple creators exist -->
+          <div id="sgCreatorActive" style="padding:8px 10px;background:var(--surface2);border:1px solid var(--accent);border-radius:var(--radius-sm);font-size:12px;color:var(--text);display:flex;align-items:center;gap:8px">
+            <span style="color:var(--accent)">✓</span>
+            <span id="sgCreatorActiveName" style="flex:1">Loading…</span>
+          </div>
+          <select id="sgCreatorSelect" style="display:none;width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:7px 10px;color:var(--text);font-size:13px;outline:none;margin-top:6px">
+            <option value="">Select a skill-creator skill…</option>
+          </select>
+          <div style="font-size:11px;color:var(--text-dim);margin-top:4px">That skill's methodology replaces the built-in meta prompt.</div>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">AI Provider</label>
+        <div class="provider-toggle">
+          <button class="provider-btn" id="providerClaudeBtn" data-provider="claude-cli">
+            <span style="font-size:20px">⚡</span>
+            <div>
+              <div style="font-weight:600;font-size:13px">Claude CLI</div>
+              <div class="provider-status" id="cliStatus">Checking…</div>
+            </div>
+          </button>
+          <button class="provider-btn" id="providerOpenRouterBtn" data-provider="openrouter">
+            <span style="font-size:20px">🌐</span>
+            <div>
+              <div style="font-weight:600;font-size:13px">OpenRouter</div>
+              <div class="provider-status" id="orStatus">Not configured</div>
+            </div>
+          </button>
+        </div>
+        <div id="orInlineConfig" style="display:none;margin-top:10px;padding:12px;background:var(--surface2);border-radius:8px;border:1px solid var(--border)">
+          <div class="form-group" style="margin-bottom:8px">
+            <label class="form-label" style="font-size:11px">API Key</label>
+            <input type="password" id="orKeyInline" placeholder="sk-or-v1-…">
+          </div>
+          <div class="form-group" style="margin-bottom:8px">
+            <label class="form-label" style="font-size:11px">Model</label>
+            <select id="orModelInline">
+              <option value="anthropic/claude-sonnet-4-5">Claude Sonnet 4.5 (Recommended)</option>
+              <option value="anthropic/claude-opus-4-5">Claude Opus 4.5</option>
+              <option value="anthropic/claude-haiku-4-5">Claude Haiku 4.5 (Fast)</option>
+              <option value="openai/gpt-4o">GPT-4o</option>
+              <option value="openai/gpt-4o-mini">GPT-4o Mini</option>
+              <option value="google/gemini-2.5-flash">Gemini 2.5 Flash</option>
+              <option value="meta-llama/llama-3.3-70b-instruct">Llama 3.3 70B</option>
+            </select>
+          </div>
+          <button class="btn btn-sm btn-secondary" id="saveOrKeyInline">Save Key</button>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label" id="skillGenPromptLabel">What should the skill do?</label>
+        <textarea id="skillGenPrompt" rows="4" placeholder="e.g. A skill that reviews git diffs and writes release notes grouped by features, bug fixes, and breaking changes"></textarea>
+        <div class="hint" id="skillGenPromptHint">Be specific: what triggers it, what it does step by step, and what the output looks like.</div>
+      </div>
+
+      <!-- Clarifying context (collapsible) -->
+      <details class="wf-clarify-details" style="margin-bottom:14px">
+        <summary class="wf-clarify-summary">📎 Add context to improve results <span style="font-size:11px;font-weight:400">(optional but helps)</span></summary>
+        <div class="wf-clarify-body">
+          <div class="form-group" style="margin-top:10px;margin-bottom:8px">
+            <label class="form-label">Repository or project path</label>
+            <input type="text" id="sgRepoPath" placeholder="~/my-project  or  github.com/org/repo">
+            <div style="font-size:11px;color:var(--text-dim);margin-top:3px">Helps Claude use realistic file paths and naming conventions.</div>
+          </div>
+          <div class="form-group" style="margin-bottom:8px">
+            <label class="form-label">Tech stack / languages</label>
+            <input type="text" id="sgTechStack" placeholder="e.g. TypeScript, Python, React, Node.js">
+          </div>
+          <div class="form-group" style="margin-bottom:8px">
+            <label class="form-label">Domain <span style="font-weight:400;color:var(--text-dim)">(optional — one or more)</span></label>
+            <input type="text" id="sgDomain" placeholder="e.g. web development, security, data science, DevOps">
+            <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:5px">
+              <span class="matcher-chip" onclick="document.getElementById('sgDomain').value='Web / Frontend'">Web / Frontend</span>
+              <span class="matcher-chip" onclick="document.getElementById('sgDomain').value='Backend / APIs'">Backend / APIs</span>
+              <span class="matcher-chip" onclick="document.getElementById('sgDomain').value='DevOps / CI-CD'">DevOps / CI-CD</span>
+              <span class="matcher-chip" onclick="document.getElementById('sgDomain').value='Data & ML'">Data & ML</span>
+              <span class="matcher-chip" onclick="document.getElementById('sgDomain').value='Security'">Security</span>
+              <span class="matcher-chip" onclick="document.getElementById('sgDomain').value='Mobile'">Mobile</span>
+              <span class="matcher-chip" onclick="document.getElementById('sgDomain').value='Testing / QA'">Testing / QA</span>
+              <span class="matcher-chip" onclick="document.getElementById('sgDomain').value='Documentation'">Documentation</span>
+            </div>
+          </div>
+          <div class="form-group" style="margin-bottom:0">
+            <label class="form-label">Perspective / role to assume <span style="font-weight:400;color:var(--text-dim)">(optional — one, multiple, or blank)</span></label>
+            <input type="text" id="sgPerspective" placeholder="e.g. senior engineer, security researcher, DX engineer">
+            <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:5px">
+              <span class="matcher-chip" onclick="document.getElementById('sgPerspective').value='Senior Engineer'">Senior Engineer</span>
+              <span class="matcher-chip" onclick="document.getElementById('sgPerspective').value='Staff / Principal Engineer'">Staff / Principal</span>
+              <span class="matcher-chip" onclick="document.getElementById('sgPerspective').value='Security Researcher'">Security Researcher</span>
+              <span class="matcher-chip" onclick="document.getElementById('sgPerspective').value='DX Engineer'">DX Engineer</span>
+              <span class="matcher-chip" onclick="document.getElementById('sgPerspective').value='SRE'">SRE</span>
+              <span class="matcher-chip" onclick="document.getElementById('sgPerspective').value='Tech Lead'">Tech Lead</span>
+              <span class="matcher-chip" onclick="document.getElementById('sgPerspective').value='Solutions Architect'">Architect</span>
+              <span class="matcher-chip" onclick="document.getElementById('sgPerspective').value='Product Engineer'">Product Engineer</span>
+            </div>
+          </div>
+        </div>
+      </details>
+
+      <div style="margin-bottom:16px">
+        <div style="font-size:11px;color:var(--text-dim);margin-bottom:6px;text-transform:uppercase;letter-spacing:0.5px">Quick examples — click to fill:</div>
+        <!-- Skill examples -->
+        <div id="sgChipsSkill" style="display:flex;flex-wrap:wrap;gap:6px">
+          <span class="matcher-chip" data-sgprompt="A skill that generates a conventional commit message from staged git changes. Detect the type (feat/fix/chore/etc) from the diff, infer scope from affected files, write a concise subject line under 72 chars, and add a body when changes are complex">Commit messages</span>
+          <span class="matcher-chip" data-sgprompt="A skill that explains any code file or snippet in plain language — what it does, how it works step by step, what design patterns it uses, and any non-obvious gotchas a new developer should know">Explain code</span>
+          <span class="matcher-chip" data-sgprompt="A skill that writes a complete PR description from a git diff — summary of changes, motivation, testing notes, risks or breaking changes, and a reviewer checklist">PR description</span>
+          <span class="matcher-chip" data-sgprompt="A skill that scans the codebase for TODO, FIXME, HACK, and XXX comments and presents them as a prioritized action list grouped by file with severity ratings">Extract TODOs</span>
+          <span class="matcher-chip" data-sgprompt="A skill that writes comprehensive unit tests for any function or class. Cover happy path, edge cases (null, empty, boundary values), error paths, and async behavior. Auto-detect the test framework used in the project">Write unit tests</span>
+        </div>
+        <!-- Agent examples -->
+        <div id="sgChipsAgent" style="display:none;flex-wrap:wrap;gap:6px">
+          <span class="matcher-chip" data-sgprompt="A security auditor agent that scans source files for vulnerabilities (hardcoded secrets, injection vectors, missing auth checks) and returns a severity-ranked JSON findings report. It does not fix issues — reports only.">Security auditor</span>
+          <span class="matcher-chip" data-sgprompt="A dependency checker agent that runs npm outdated or pip list --outdated, identifies packages with breaking version jumps, and returns a structured update plan with risk level (safe/breaking/unknown) for each package">Dependency checker</span>
+          <span class="matcher-chip" data-sgprompt="A code review agent that reviews git diff output for logic errors, code smells, and style issues. It returns a structured markdown report with findings grouped by CRITICAL, HIGH, MEDIUM, LOW severity">Code reviewer</span>
+          <span class="matcher-chip" data-sgprompt="An API documentation agent that reads route handler source files and generates an OpenAPI 3.0 YAML spec. It infers request/response schemas from TypeScript types or JSDoc comments and writes the output to openapi.yaml">API doc generator</span>
+          <span class="matcher-chip" data-sgprompt="A test runner agent that finds and runs failing tests, reads the error output, diagnoses the root cause by reading relevant source files, and returns a fix recommendation with the exact lines to change">Test diagnostics</span>
+        </div>
+        <!-- Hook examples -->
+        <div id="sgChipsHook" style="display:none;flex-wrap:wrap;gap:6px">
+          <span class="matcher-chip" data-sgprompt="A PreToolUse hook that blocks any Bash command containing rm -rf on paths that are not inside /tmp or node_modules. Show a clear reason message explaining what was blocked.">Block rm -rf</span>
+          <span class="matcher-chip" data-sgprompt="A PostToolUse hook that appends a log entry to ~/.claude/tool-log.jsonl every time Claude writes or edits a file. Log: timestamp, tool name, file path, and number of bytes written.">Log file writes</span>
+          <span class="matcher-chip" data-sgprompt="A Stop hook that checks if there are any uncommitted git changes in the current directory. If yes, prevent Claude from stopping and remind it to commit or stash changes first.">Commit reminder</span>
+          <span class="matcher-chip" data-sgprompt="A SessionStart hook that reads the current git branch name and the last 5 commit messages, then injects them as context into the Claude session so Claude always knows what work is in progress.">Git context injector</span>
+          <span class="matcher-chip" data-sgprompt="A PreToolUse hook that intercepts Edit and Write tool calls and validates that the target file path is not in a list of protected paths (.env, secrets.json, ~/.ssh). Block with a clear reason if it matches.">Protect sensitive files</span>
+        </div>
+        <!-- Command examples -->
+        <div id="sgChipsCommand" style="display:none;flex-wrap:wrap;gap:6px">
+          <span class="matcher-chip" data-sgprompt="A /changelog command that lists all commits since the last release tag, groups them by conventional-commit type (feat/fix/chore/docs), and outputs a formatted markdown changelog. $ARGUMENTS optionally overrides the base tag.">Changelog</span>
+          <span class="matcher-chip" data-sgprompt="A /standup command that summarizes my git activity from the last 24 hours (commits, branches touched) into three sections: Done yesterday, Doing today, Blockers — ready to paste into Slack.">Standup notes</span>
+          <span class="matcher-chip" data-sgprompt="A /fix-issue command that takes a GitHub issue number as $ARGUMENTS, fetches the issue with gh, locates the relevant code, implements a fix, and prepares a commit referencing the issue.">Fix GitHub issue</span>
+          <span class="matcher-chip" data-sgprompt="A /release-notes command that drafts user-facing release notes from commits between two tags, translating technical commit messages into plain-language benefit statements grouped by Features, Improvements, and Fixes.">Release notes</span>
+          <span class="matcher-chip" data-sgprompt="A /refactor command that takes a file path as $ARGUMENTS, analyzes it for code smells (long functions, duplication, deep nesting), and refactors it step by step while keeping behavior identical and running tests after each change.">Refactor file</span>
+        </div>
+      </div>
+      <div class="folder-dialog-actions">
+        <button class="btn btn-ghost" id="skillGenCancel">Cancel</button>
+        <button class="btn btn-primary" id="skillGenGenerate">✨ Generate Skill</button>
+      </div>
+    </div>
+
+    <!-- State 2: Loading -->
+    <div id="skillGenLoading" style="display:none;text-align:center;padding:48px 0">
+      <div class="spinner" style="width:32px;height:32px;border-width:3px;margin:0 auto 16px"></div>
+      <div style="font-size:14px;color:var(--text)" id="skillGenLoadingMsg">Generating your skill…</div>
+      <div style="font-size:12px;color:var(--text-muted);margin-top:6px">This usually takes 15–30 seconds</div>
+    </div>
+
+    <!-- State 3: Review & save -->
+    <div id="skillGenReview" style="display:none">
+      <div class="form-group" style="margin-bottom:12px">
+        <label class="form-label" id="skillGenNameLabel">Skill Name</label>
+        <input type="text" id="skillGenName" placeholder="my-skill-name">
+        <div class="hint" id="skillGenNameHint">Kebab-case. Becomes the slash command: <code>/skill-name</code></div>
+      </div>
+      <div style="height:380px;border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:12px" id="skillGenEditorWrap"></div>
+
+      <!-- Hook wiring — only visible when type = hook -->
+      <div id="sgHookWire" style="display:none;margin-bottom:12px;border:1px solid var(--border);border-radius:8px;background:var(--surface);padding:12px">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;font-weight:600;margin-bottom:0;user-select:none">
+          <input type="checkbox" id="sgWireEnabled" style="margin:0">
+          🔗 Also register this hook in settings.json
+          <span style="font-weight:400;color:var(--text-muted);font-size:11px">(optional)</span>
+        </label>
+        <div id="sgWireOptions" style="display:none;margin-top:12px">
+          <div class="form-group" style="margin-bottom:8px">
+            <label class="form-label">Hook event</label>
+            <select id="sgWireEvent" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:7px 10px;color:var(--text);font-size:13px;outline:none">
+              <option value="PreToolUse">PreToolUse — before every tool call</option>
+              <option value="PostToolUse">PostToolUse — after every tool call succeeds</option>
+              <option value="PostToolUseFailure">PostToolUseFailure — after a tool error</option>
+              <option value="PermissionRequest">PermissionRequest — when Claude asks permission</option>
+              <option value="SessionStart">SessionStart — when a session begins</option>
+              <option value="SessionEnd">SessionEnd — when a session ends</option>
+              <option value="Stop">Stop — when Claude is about to stop responding</option>
+              <option value="UserPromptSubmit">UserPromptSubmit — when user sends a message</option>
+              <option value="Setup">Setup — one-time project environment setup</option>
+            </select>
+          </div>
+          <div id="sgWireMatcherRow" class="form-group" style="margin-bottom:0">
+            <label class="form-label">Matcher <span style="font-weight:400;color:var(--text-dim)">(optional — blank = match all tools)</span></label>
+            <input type="text" id="sgWireMatcher" placeholder="e.g. Bash, Edit, Write — tool name to filter on">
+            <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:5px">
+              <span class="matcher-chip" onclick="document.getElementById('sgWireMatcher').value='Bash'">Bash</span>
+              <span class="matcher-chip" onclick="document.getElementById('sgWireMatcher').value='Edit'">Edit</span>
+              <span class="matcher-chip" onclick="document.getElementById('sgWireMatcher').value='Write'">Write</span>
+              <span class="matcher-chip" onclick="document.getElementById('sgWireMatcher').value='Read'">Read</span>
+              <span class="matcher-chip" onclick="document.getElementById('sgWireMatcher').value='WebFetch'">WebFetch</span>
+              <span class="matcher-chip" onclick="document.getElementById('sgWireMatcher').value='mcp__'">mcp__* (any MCP)</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="folder-dialog-actions">
+        <button class="btn btn-secondary" id="skillGenRegenerate">↺ Regenerate</button>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-ghost" id="skillGenCancel2">Cancel</button>
+          <button class="btn btn-primary" id="skillGenSave">Save Skill</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="folderOverlay">
+  <div class="folder-dialog">
+    <h3>Change .claude folder</h3>
+    <div class="form-group">
+      <label class="form-label">Folder Path</label>
+      <input type="text" id="folderInput" placeholder="~/.claude">
+      <div class="hint" id="folderHint" style="line-height:1.7">
+        Use <code>~</code> for your home directory.<br>
+        <span style="opacity:0.7;font-size:11px">
+          macOS / Linux: <code>~/.claude</code> &nbsp;|&nbsp;
+          Windows: <code>%USERPROFILE%\.claude</code>
+        </span>
+      </div>
+    </div>
+    <div class="folder-dialog-actions">
+      <button class="btn btn-ghost" id="folderCancel">Cancel</button>
+      <button class="btn btn-primary" id="folderConfirm">Apply</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== CONFIRM DIALOG ===== -->
+<div class="overlay" id="confirmOverlay">
+  <div class="folder-dialog">
+    <h3 id="confirmTitle">Confirm</h3>
+    <p id="confirmMsg" style="color:var(--text-muted);margin-top:8px;font-size:13px"></p>
+    <div class="folder-dialog-actions">
+      <button class="btn btn-ghost" id="confirmCancel">Cancel</button>
+      <button class="btn btn-danger" id="confirmOk">Delete</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== WORKFLOW WIZARD MODAL ===== -->
+<div class="overlay" id="workflowWizard" style="z-index:210">
+  <div class="wf-wizard-dialog">
+    <!-- Step indicator (4 steps) -->
+    <div class="wf-wizard-header">
+      <div class="wf-wizard-steps">
+        <div class="wf-step-dot active" data-step="1"><span>1</span><label>Goal</label></div>
+        <div class="wf-step-line"></div>
+        <div class="wf-step-dot" data-step="2"><span>2</span><label>Plan</label></div>
+        <div class="wf-step-line"></div>
+        <div class="wf-step-dot" data-step="3"><span>3</span><label>Build</label></div>
+        <div class="wf-step-line"></div>
+        <div class="wf-step-dot" data-step="4"><span>4</span><label>Install</label></div>
+      </div>
+      <button class="icon-btn" id="wfWizardClose">✕</button>
+    </div>
+
+    <!-- Step 1: Goal + clarifying questions + provider -->
+    <div id="wfStep1" class="wf-wizard-body">
+      <h3 style="margin:0 0 4px">✨ Create Workflow with AI</h3>
+      <p style="margin:0 0 14px;color:var(--text-muted);font-size:13px">Describe your goal — Claude generates a plan, then builds each component with the optimised meta prompts.</p>
+
+      <div class="form-group" style="margin-bottom:10px">
+        <label class="form-label">What should this workflow do?</label>
+        <textarea id="wfGoalInput" rows="3" placeholder="e.g. A code review pipeline that checks quality, security, and posts a structured report" style="resize:vertical"></textarea>
+      </div>
+      <div class="wf-goal-examples" style="margin-bottom:14px">
+        <span style="font-size:11px;color:var(--text-dim);margin-right:6px">Try:</span>
+        <button class="matcher-chip" data-goal="A code review pipeline that checks quality, security, and suggests improvements">Code Review</button>
+        <button class="matcher-chip" data-goal="Auto-generate documentation for any file I edit">Docs Generator</button>
+        <button class="matcher-chip" data-goal="A security auditor that scans for hardcoded secrets and vulnerabilities before commits">Security Auditor</button>
+        <button class="matcher-chip" data-goal="Track test coverage and alert when I edit files without corresponding tests">Test Guardian</button>
+        <button class="matcher-chip" data-goal="A release automation workflow that bumps versions, generates changelogs, and creates release notes">Release Helper</button>
+      </div>
+
+      <!-- Clarifying questions (collapsible) -->
+      <details class="wf-clarify-details">
+        <summary class="wf-clarify-summary">📎 Add context to improve results <span style="font-size:11px;font-weight:400">(optional but helps)</span></summary>
+        <div class="wf-clarify-body">
+          <div class="form-group" style="margin-top:10px;margin-bottom:8px">
+            <label class="form-label">Repository or project path</label>
+            <input type="text" id="wfRepoPath" placeholder="~/my-project  or  github.com/org/repo">
+            <div style="font-size:11px;color:var(--text-dim);margin-top:3px">Claude uses this to make component names and file paths concrete and realistic.</div>
+          </div>
+          <div class="form-group" style="margin-bottom:8px">
+            <label class="form-label">Tech stack / languages</label>
+            <input type="text" id="wfTechStack" placeholder="e.g. TypeScript, Python, React, Node.js">
+          </div>
+          <div class="form-group" style="margin-bottom:8px">
+            <label class="form-label">Domain <span style="font-weight:400;color:var(--text-dim)">(optional — one or more)</span></label>
+            <input type="text" id="wfDomain" placeholder="e.g. web development, security, data science, DevOps">
+            <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:5px">
+              <span class="matcher-chip" onclick="document.getElementById('wfDomain').value='Web / Frontend'">Web / Frontend</span>
+              <span class="matcher-chip" onclick="document.getElementById('wfDomain').value='Backend / APIs'">Backend / APIs</span>
+              <span class="matcher-chip" onclick="document.getElementById('wfDomain').value='DevOps / CI-CD'">DevOps / CI-CD</span>
+              <span class="matcher-chip" onclick="document.getElementById('wfDomain').value='Data & ML'">Data & ML</span>
+              <span class="matcher-chip" onclick="document.getElementById('wfDomain').value='Security'">Security</span>
+              <span class="matcher-chip" onclick="document.getElementById('wfDomain').value='Testing / QA'">Testing / QA</span>
+            </div>
+          </div>
+          <div class="form-group" style="margin-bottom:8px">
+            <label class="form-label">Perspective / role to assume <span style="font-weight:400;color:var(--text-dim)">(optional — one, multiple, or blank)</span></label>
+            <input type="text" id="wfPerspective" placeholder="e.g. senior engineer, security researcher, DX engineer">
+            <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:5px">
+              <span class="matcher-chip" onclick="document.getElementById('wfPerspective').value='Senior Engineer'">Senior Engineer</span>
+              <span class="matcher-chip" onclick="document.getElementById('wfPerspective').value='Staff / Principal Engineer'">Staff / Principal</span>
+              <span class="matcher-chip" onclick="document.getElementById('wfPerspective').value='Security Researcher'">Security Researcher</span>
+              <span class="matcher-chip" onclick="document.getElementById('wfPerspective').value='DX Engineer'">DX Engineer</span>
+              <span class="matcher-chip" onclick="document.getElementById('wfPerspective').value='SRE'">SRE</span>
+              <span class="matcher-chip" onclick="document.getElementById('wfPerspective').value='Tech Lead'">Tech Lead</span>
+              <span class="matcher-chip" onclick="document.getElementById('wfPerspective').value='Solutions Architect'">Architect</span>
+            </div>
+          </div>
+          <div class="form-group" style="margin-bottom:0">
+            <label class="form-label">Primary trigger</label>
+            <select id="wfTrigger" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:7px 10px;color:var(--text);font-size:13px;outline:none">
+              <option value="">Auto-detect from goal</option>
+              <option value="slash-command">Slash command (/name) — manually invoked</option>
+              <option value="hook">Lifecycle hook — runs automatically on tool events</option>
+              <option value="both">Both a slash command and auto-running hooks</option>
+            </select>
+          </div>
+        </div>
+      </details>
+
+      <!-- Provider picker -->
+      <div style="margin-top:16px">
+        <label class="form-label">Generate with</label>
+        <div style="display:flex;gap:8px;margin-top:6px">
+          <button class="wf-provider-btn active" id="wfProviderCli" onclick="setWfProvider('claude-cli')">
+            <span>🖥 Claude CLI</span><span id="wfCliStatus" style="font-size:10px;color:var(--text-dim)">Checking…</span>
+          </button>
+          <button class="wf-provider-btn" id="wfProviderOr" onclick="setWfProvider('openrouter')">
+            <span>☁️ OpenRouter</span><span id="wfOrStatus" style="font-size:10px;color:var(--text-dim)">Checking…</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="wf-wizard-footer">
+        <button class="btn btn-ghost" id="wfWizardCancel">Cancel</button>
+        <button class="btn btn-primary" id="wfGenerateBtn">Generate Plan →</button>
+      </div>
+    </div>
+
+    <!-- Step 2: Plan review (names/types/descriptions only) -->
+    <div id="wfStep2" class="wf-wizard-body" style="display:none">
+      <div id="wfPlanHeader" style="margin-bottom:14px"></div>
+      <div id="wfComponentList" class="wf-component-review-list"></div>
+      <div class="wf-wizard-footer">
+        <button class="btn btn-ghost" id="wfBackToGoal">← Regenerate</button>
+        <button class="btn btn-primary" id="wfBuildBtn" style="display:none">Build Components →</button>
+      </div>
+    </div>
+
+    <!-- Step 3: Build (per-component generation + review) -->
+    <div id="wfStep3" class="wf-wizard-body" style="display:none">
+      <h3 style="margin:0 0 4px">Building Components</h3>
+      <p style="margin:0 0 14px;font-size:13px;color:var(--text-muted)">Generating each component using the optimised meta prompts…</p>
+      <div id="wfBuildList" class="wf-install-list"></div>
+      <div id="wfReviewList" class="wf-component-review-list" style="display:none;margin-top:18px"></div>
+      <div class="wf-wizard-footer">
+        <button class="btn btn-primary" id="wfInstallBtn" style="display:none">Install Workflow →</button>
+      </div>
+    </div>
+
+    <!-- Step 4: Install + view -->
+    <div id="wfStep4" class="wf-wizard-body" style="display:none">
+      <h3 style="margin:0 0 16px">Installing Workflow</h3>
+      <div id="wfInstallList" class="wf-install-list"></div>
+      <div id="wfSetupGuide" style="display:none;margin-top:20px"></div>
+      <div class="wf-wizard-footer" style="margin-top:20px">
+        <button class="btn btn-primary" id="wfDoneBtn" style="display:none">Done ✓</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== EXPLAIN MODAL ===== -->
+<div class="overlay" id="explainModal" style="z-index:220">
+  <div class="explain-dialog">
+    <div class="explain-dialog-header">
+      <div style="flex:1;min-width:0">
+        <h3 id="explainModalTitle" style="margin:0;font-size:16px;font-weight:700">Understanding this item</h3>
+        <div id="explainScopePills" style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap"></div>
+      </div>
+      <button class="icon-btn" id="explainModalClose" style="flex-shrink:0;margin-left:12px">✕</button>
+    </div>
+    <div id="explainModalBody" class="explain-body"></div>
+    <div class="explain-dialog-footer">
+      <button class="btn btn-ghost btn-sm" id="explainModalCopy">📋 Copy</button>
+      <button class="btn btn-ghost btn-sm" id="explainModalClose2">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== ADD SOURCE MODAL ===== -->
+<div class="overlay" id="addSourceModal">
+  <div class="folder-dialog" style="max-width:520px">
+    <div class="folder-dialog-header">
+      <h3>Add Marketplace Source</h3>
+      <button class="icon-btn" id="addSourceClose">✕</button>
+    </div>
+    <p style="color:var(--text-muted);font-size:13px;margin:0 0 16px">Point to any URL that returns a JSON list of MCP servers. The JSON should have a <code style="background:var(--surface3);padding:1px 5px;border-radius:3px">plugins</code>, <code style="background:var(--surface3);padding:1px 5px;border-radius:3px">servers</code>, or <code style="background:var(--surface3);padding:1px 5px;border-radius:3px">packages</code> array — each item with <code style="background:var(--surface3);padding:1px 5px;border-radius:3px">name</code>, <code style="background:var(--surface3);padding:1px 5px;border-radius:3px">description</code>, and <code style="background:var(--surface3);padding:1px 5px;border-radius:3px">installCmd</code>.</p>
+    <div class="form-group" style="margin-bottom:10px">
+      <label class="form-label">Source Name</label>
+      <input type="text" id="addSourceName" placeholder="e.g. My Company Registry">
+    </div>
+    <div class="form-group" style="margin-bottom:10px">
+      <label class="form-label">JSON URL</label>
+      <input type="url" id="addSourceUrl" placeholder="https://example.com/mcp-registry.json">
+    </div>
+    <div class="form-group" style="margin-bottom:16px">
+      <label class="form-label">Icon <span style="font-weight:400;color:var(--text-dim)">(emoji, optional)</span></label>
+      <input type="text" id="addSourceIcon" placeholder="🌐" style="max-width:72px">
+    </div>
+    <div id="addSourceError" style="display:none;color:var(--danger);font-size:12px;margin-bottom:10px"></div>
+    <div class="folder-dialog-actions">
+      <button class="btn btn-ghost" id="addSourceCancel">Cancel</button>
+      <button class="btn btn-primary" id="addSourceConfirm">Add Source</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== MARKETPLACE INSTALL MODAL ===== -->
+<div class="overlay" id="installModal">
+  <div class="folder-dialog" style="max-width:580px">
+    <div class="folder-dialog-header">
+      <h3 id="installModalTitle">Install MCP Server</h3>
+      <button class="icon-btn" id="installModalClose">✕</button>
+    </div>
+    <p style="color:var(--text-muted);font-size:13px;margin:0 0 14px" id="installModalDesc"></p>
+    <div id="installModalNotice" style="display:none;padding:10px 12px;border-radius:6px;font-size:12px;margin-bottom:12px;background:var(--warning-bg);color:var(--warning);border:1px solid rgba(249,226,175,.3)"></div>
+    <div class="form-group" style="margin-bottom:10px">
+      <label class="form-label" id="installModalCmdLabel">Install Command</label>
+      <textarea id="installModalCmd" rows="3" style="font-family:monospace;font-size:12px;width:100%;box-sizing:border-box;resize:vertical;background:var(--surface3);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:10px"></textarea>
+      <div style="font-size:11px;color:var(--text-dim);margin-top:5px">Replace placeholder values like <code style="background:var(--surface3);padding:1px 4px;border-radius:3px">your_token</code> with real credentials before running.</div>
+    </div>
+    <div id="installModalOutput" style="display:none;margin-bottom:10px">
+      <label class="form-label">Output</label>
+      <pre id="installModalOutputPre" style="background:var(--surface3);border:1px solid var(--border);border-radius:6px;padding:10px;font-size:12px;color:var(--success);white-space:pre-wrap;max-height:160px;overflow-y:auto"></pre>
+    </div>
+    <div class="folder-dialog-actions">
+      <button class="btn btn-ghost" id="installModalCopy">📋 Copy</button>
+      <button class="btn btn-ghost" id="installModalCancel">Cancel</button>
+      <button class="btn btn-secondary" id="installModalDirectBtn" style="display:none">✍ Write to settings.json</button>
+      <button class="btn btn-primary" id="installModalConfirm">Run Install</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== IMPROVE MODAL ===== -->
+<div class="overlay" id="improveModal">
+  <div class="skill-gen-dialog" style="max-width:700px">
+    <div class="skill-gen-header">
+      <div>
+        <h3 style="margin:0 0 2px" id="improveModalTitle">Improve Skill</h3>
+        <p style="margin:0;font-size:12px;color:var(--text-muted)">AI rewrites the file applying best practices, or incorporating your feedback</p>
+      </div>
+      <button class="icon-btn" id="improveClose">✕</button>
+    </div>
+
+    <!-- State: Input -->
+    <div id="improveInput">
+      <div class="form-group" style="margin-bottom:12px">
+        <label class="form-label">Improvement method</label>
+        <div style="display:flex;gap:8px;margin-top:6px">
+          <button class="wf-provider-btn active" id="improveMethodDirect" onclick="setImproveMethod('direct')">
+            <span>⚡ Direct AI</span>
+            <span style="font-size:10px">Applies best practices</span>
+          </button>
+          <button class="wf-provider-btn" id="improveMethodFeedback" onclick="setImproveMethod('feedback')">
+            <span>💬 From Feedback</span>
+            <span style="font-size:10px">You describe the issues</span>
+          </button>
+        </div>
+      </div>
+      <div id="improveFeedbackRow" class="form-group" style="display:none;margin-bottom:12px">
+        <label class="form-label">What needs improving?</label>
+        <textarea id="improveFeedback" rows="4" placeholder="e.g. The trigger phrases are too vague. Steps 3 and 4 overlap. The output example is missing. Make it shorter overall."></textarea>
+      </div>
+      <div class="form-group" style="margin-bottom:16px">
+        <label class="form-label">Generate with</label>
+        <div style="display:flex;gap:8px;margin-top:6px">
+          <button class="wf-provider-btn active" id="improveProviderCli" onclick="setImproveProvider('claude-cli')">
+            <span>🖥 Claude CLI</span>
+            <span id="improveCliStatus" style="font-size:10px;color:var(--text-dim)">Checking…</span>
+          </button>
+          <button class="wf-provider-btn" id="improveProviderOr" onclick="setImproveProvider('openrouter')">
+            <span>☁️ OpenRouter</span>
+            <span id="improveOrStatus" style="font-size:10px;color:var(--text-dim)">Checking…</span>
+          </button>
+        </div>
+      </div>
+      <div class="folder-dialog-actions">
+        <button class="btn btn-ghost" id="improveCancel">Cancel</button>
+        <button class="btn btn-primary" id="improveRunBtn">✨ Improve →</button>
+      </div>
+    </div>
+
+    <!-- State: Loading -->
+    <div id="improveLoading" style="display:none;text-align:center;padding:48px 0">
+      <div class="spinner" style="width:32px;height:32px;border-width:3px;margin:0 auto 16px"></div>
+      <div style="font-size:14px;color:var(--text)" id="improveLoadingMsg">Improving…</div>
+      <div style="font-size:12px;color:var(--text-muted);margin-top:6px">Usually 15–30 seconds</div>
+    </div>
+
+    <!-- State: Review -->
+    <div id="improveReview" style="display:none">
+      <div style="font-size:13px;color:var(--text-muted);margin-bottom:10px">Review the improved version. Edit if needed, then accept to update the file.</div>
+      <div id="improveEditorWrap" style="height:380px;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden"></div>
+      <div class="folder-dialog-actions" style="margin-top:12px">
+        <button class="btn btn-ghost" id="improveRegenBtn">↺ Back &amp; Regenerate</button>
+        <button class="btn btn-primary" id="improveAcceptBtn">✓ Accept &amp; Update</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== TOAST ===== -->
+<div id="toast-container"></div>
+
+<!-- Monaco Editor -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs/loader.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
