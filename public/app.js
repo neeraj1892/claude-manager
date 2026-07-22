@@ -1168,7 +1168,17 @@ async function loadHooks() {
   const data = await api('GET', '/hooks');
   if (data.settingsError) toast(data.settingsError, 'error');
   renderHookEvents(data.settings || {});
-  renderHookFiles(data.files || []);
+  // DOET: a hook file's most important state is whether it's WIRED — compute
+  // which events reference each file so every row can show it.
+  const wiredMap = {};
+  Object.entries(data.settings || {}).forEach(([event, groups]) => {
+    (groups || []).forEach(g => (g.hooks || []).forEach(h => {
+      (data.files || []).forEach(f => {
+        if ((h.command || '').includes(f.name)) (wiredMap[f.name] = wiredMap[f.name] || new Set()).add(event);
+      });
+    }));
+  });
+  renderHookFiles(data.files || [], wiredMap);
   const customCount = await renderCustomEvents();
   renderElsewhereHooks(data.elsewhere || []);
   const setCount = (id, n) => { const el = document.getElementById(id); if (el) el.textContent = n; };
@@ -1725,20 +1735,35 @@ async function deleteHookCommand(evt, idx) {
   loadHooks();
 }
 
-function renderHookFiles(files) {
+function renderHookFiles(files, wiredMap = {}) {
   const el = document.getElementById('hook-files-list');
   if (!files.length) { el.innerHTML = '<div class="text-muted" style="font-size:13px">No hook files yet. Click "+ New Hook File" to create one.</div>'; return; }
-  el.innerHTML = `<div class="list">${files.map(f => `
+  el.innerHTML = `<div class="list">${files.map(f => {
+    const events = [...(wiredMap[f.name] || [])];
+    const wired = events.length > 0;
+    return `
     <div class="list-row">
       <span style="font-size:14px">📄</span>
       <div class="list-main">
-        <div class="list-title mono">${escHtml(f.name)}</div>
+        <div class="list-title mono">${escHtml(f.name)}
+          ${wired
+            ? `<span class="badge badge-success" style="font-size:10px;margin-left:6px" title="Fires automatically on: ${escHtml(events.join(', '))}">● ${escHtml(events.slice(0, 2).join(', '))}${events.length > 2 ? ' +' + (events.length - 2) : ''}</span>`
+            : '<span class="badge badge-warning" style="font-size:10px;margin-left:6px" title="This file never runs until it is wired to a lifecycle event">○ not wired</span>'}
+        </div>
         <div class="list-sub">${f.size} · ${fmtDate(f.modified)}</div>
       </div>
+      ${!wired ? `<button class="icon-act accent" data-hf-wire="${escHtml(f.name)}" title="Wire to a lifecycle event — required before it can run">⚡</button>` : ''}
       <button class="icon-act accent" data-hf-explain="${escHtml(f.name)}" title="Explain with AI">🤖</button>
       <button class="icon-act" data-hf-edit="${escHtml(f.name)}" title="Edit">✎</button>
       <button class="icon-act danger" data-hf-del="${escHtml(f.name)}" title="Delete">🗑</button>
-    </div>`).join('')}</div>`;
+    </div>`;
+  }).join('')}</div>`;
+  el.querySelectorAll('[data-hf-wire]').forEach(b => {
+    b.onclick = () => {
+      const folder = document.getElementById('folderPath').textContent.trim();
+      showHookAddModal(null, folder + '/hooks/' + b.dataset.hfWire, `Pick the lifecycle event that should trigger ${b.dataset.hfWire}`);
+    };
+  });
   el.querySelectorAll('[data-hf-explain]').forEach(b => {
     b.onclick = () => {
       const file = files.find(f => f.name === b.dataset.hfExplain);
@@ -2886,7 +2911,7 @@ function renderItemGrid(gridId, items, type, icon, onEdit, onDelete, useDisplayN
 
     // Build metadata badges
     const badges = [];
-    if (item.trigger) badges.push(`<span class="badge badge-accent" style="font-size:10px;padding:1px 6px">${escHtml(item.trigger)}</span>`);
+    if (item.trigger) badges.push(`<span class="badge badge-muted" style="font-size:10px;padding:1px 6px">${escHtml(item.trigger)}</span>`);
     if (item.model)   badges.push(`<span class="badge badge-muted"  style="font-size:10px;padding:1px 6px">${escHtml(item.model.replace('claude-',''))}</span>`);
     if (item.tools && item.tools.length) badges.push(`<span class="badge badge-muted" style="font-size:10px;padding:1px 6px">🔒 ${item.tools.length} tools</span>`);
     if (item.locationLabel) badges.push(`<span class="badge badge-warning" style="font-size:10px;padding:1px 6px" title="Lives outside the ${type}s folder — shipped by a plugin or skill">📦 ${escHtml(item.locationLabel)}</span>`);
@@ -6149,7 +6174,8 @@ const WORKFLOWS = [
   },
 ];
 
-const WF_TYPE_CLASS = { hook: 'badge-accent', skill: 'badge-success', agent: 'badge-warning', command: 'badge-muted' };
+// Wada discipline: color is for STATE, not taxonomy — type badges stay neutral
+const WF_TYPE_CLASS = { hook: 'badge-muted', skill: 'badge-muted', agent: 'badge-muted', command: 'badge-muted' };
 
 async function loadWorkflows() {
   let myWorkflows = [];

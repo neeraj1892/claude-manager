@@ -113,17 +113,21 @@ test('cards: primary actions visible, secondary behind a ⋯ menu; subheads mark
   assert.ok(w.document.querySelectorAll('.subhead').length >= 2, 'subsection headers present');
 });
 
-test('lists render as one container with hairline rows + icon actions', async (t) => {
+test('lists render as one container; hook rows SHOW wired state (DOET visibility)', async (t) => {
   if (skipIfNoDom(t)) return;
-  // hook files list uses the unified .list component with icon-only actions
-  w.eval(`renderHookFiles([{ name: 'a.mjs', size: '1 KB', modified: new Date().toISOString(), content: '' },
-                           { name: 'b.py',  size: '2 KB', modified: new Date().toISOString(), content: '' }])`);
+  w.eval(`renderHookFiles(
+    [{ name: 'a.mjs', size: '1 KB', modified: new Date().toISOString(), content: '' },
+     { name: 'b.py',  size: '2 KB', modified: new Date().toISOString(), content: '' }],
+    { 'a.mjs': new Set(['PreToolUse']) })`);
   const list = w.document.querySelector('#hook-files-list .list');
   assert.ok(list, 'single .list container (not stacked cards)');
-  assert.equal(list.querySelectorAll('.list-row').length, 2);
-  const acts = list.querySelectorAll('.icon-act');
-  assert.equal(acts.length, 6, 'three icon actions per row');
-  acts.forEach(a => assert.ok(a.title, 'every icon action has a tooltip: ' + a.textContent));
+  const rows = list.querySelectorAll('.list-row');
+  assert.equal(rows.length, 2);
+  assert.match(rows[0].textContent, /● PreToolUse/, 'wired file shows its event');
+  assert.match(rows[1].textContent, /○ not wired/, 'unwired file states it plainly');
+  assert.ok(rows[1].querySelector('[data-hf-wire]'), 'unwired file offers a one-click Wire action');
+  assert.ok(!rows[0].querySelector('[data-hf-wire]'), 'wired file does not nag');
+  list.querySelectorAll('.icon-act').forEach(a => assert.ok(a.title, 'every icon action has a tooltip'));
 });
 
 test('keybindings + hooks subtabs render (regression)', async (t) => {
