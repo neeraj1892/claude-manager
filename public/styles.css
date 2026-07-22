@@ -1848,3 +1848,86 @@ body.light .list { border-color: transparent; box-shadow: 0 1px 3px rgba(0,0,0,0
 .icon-act:hover { background: var(--surface3); color: var(--text); }
 .icon-act.danger:hover { background: var(--danger-bg); color: var(--danger); }
 .icon-act.accent:hover { background: var(--accent-dim); color: var(--accent); }
+
+/* ═══════════════════════════════════════════════════════════════
+   LEGIBILITY PASS — modal text must be readable, not fine print.
+   Brighter reading colors, larger floors inside dialogs, and details/
+   summary rows styled as visible affordances instead of footnotes.
+   ═══════════════════════════════════════════════════════════════ */
+
+/* Reading text tokens: --text-dim was Apple's tertiaryLabel (placeholder
+   grade) but the app uses it for real explanatory copy — brighten both. */
+:root {
+  --text-muted: #a6a6ad;
+  --text-dim: #8a8a92;
+}
+body.light {
+  --text-muted: #55555c;
+  --text-dim: #74747c;
+}
+
+/* Dialogs: raise the base size and the small-text floor */
+.skill-gen-dialog, .wf-wizard-dialog, .explain-dialog, .folder-dialog {
+  font-size: 14px;
+  line-height: 1.55;
+}
+.skill-gen-dialog .form-label, .wf-wizard-dialog .form-label {
+  font-size: 13px;
+  color: var(--text);
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 650;
+}
+/* Hints and helper copy inside dialogs: floor at 12.5px, readable color */
+.skill-gen-dialog [style*="font-size:11px"],
+.skill-gen-dialog [style*="font-size:12px"],
+.wf-wizard-dialog [style*="font-size:11px"],
+.wf-wizard-dialog [style*="font-size:12px"] {
+  font-size: 12.5px !important;
+}
+.skill-gen-dialog [style*="color:var(--text-dim)"],
+.wf-wizard-dialog [style*="color:var(--text-dim)"] {
+  color: var(--text-muted) !important;
+}
+
+/* details/summary: a real, visible control — not a footnote */
+.skill-gen-dialog details:not(.more-menu) > summary,
+.wf-wizard-dialog details:not(.more-menu) > summary,
+.section details:not(.more-menu) > summary {
+  font-size: 13.5px !important;
+  font-weight: 600;
+  color: var(--text) !important;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface2);
+  cursor: pointer;
+  user-select: none;
+  transition: background .15s, border-color .15s;
+  list-style-position: inside;
+}
+.skill-gen-dialog details:not(.more-menu) > summary:hover,
+.wf-wizard-dialog details:not(.more-menu) > summary:hover,
+.section details:not(.more-menu) > summary:hover {
+  background: var(--surface3);
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
+}
+.skill-gen-dialog details:not(.more-menu)[open] > summary,
+.wf-wizard-dialog details:not(.more-menu)[open] > summary,
+.section details:not(.more-menu)[open] > summary {
+  background: var(--accent-dim);
+  color: var(--accent) !important;
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+  margin-bottom: 10px;
+}
+
+/* Command textareas: real code sizing, not squint-grade */
+#runManualCmd, .wf-oneshot-cmd, #settingsAiPatch, #ceScript {
+  font-size: 12.5px !important;
+  line-height: 1.6;
+  color: var(--text);
+}
+
+/* Modal titles + subtitles */
+.skill-gen-header h3 { font-size: 17px; letter-spacing: -0.01em; }
+.skill-gen-header p { font-size: 13px !important; color: var(--text-muted) !important; }
