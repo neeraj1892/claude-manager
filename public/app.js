@@ -1138,24 +1138,43 @@ function extractCmdsWithMatcher(groups) {
   return groups.flatMap(g => (g.hooks || []).map(h => ({ matcher: g.matcher || '', cmd: h.command || h.type || '' })));
 }
 
+// Hooks sub-tabs — one concern visible at a time
+(function () {
+  document.querySelectorAll('#hookSubtabs .hook-subtab').forEach(tab => {
+    tab.onclick = () => {
+      document.querySelectorAll('#hookSubtabs .hook-subtab').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      ['events', 'files', 'custom', 'elsewhere'].forEach(k => {
+        const p = document.getElementById('hook-sub-' + k);
+        if (p) p.style.display = k === tab.dataset.hookSub ? '' : 'none';
+      });
+    };
+  });
+})();
+
 async function loadHooks() {
   const data = await api('GET', '/hooks');
   if (data.settingsError) toast(data.settingsError, 'error');
   renderHookEvents(data.settings || {});
   renderHookFiles(data.files || []);
-  renderCustomEvents();
+  const customCount = await renderCustomEvents();
   renderElsewhereHooks(data.elsewhere || []);
+  const setCount = (id, n) => { const el = document.getElementById(id); if (el) el.textContent = n; };
+  setCount('hsub-count-events', Object.keys(data.settings || {}).length);
+  setCount('hsub-count-files', (data.files || []).length);
+  setCount('hsub-count-custom', customCount);
+  setCount('hsub-count-elsewhere', (data.elsewhere || []).length);
 }
 
 // ===== CUSTOM (DERIVED) EVENTS =====
 async function renderCustomEvents() {
   const el = document.getElementById('custom-events-list');
-  if (!el) return;
+  if (!el) return 0;
   try {
     const events = await api('GET', '/custom-events');
     if (!events.length) {
       el.innerHTML = '<div style="font-size:12px;color:var(--text-dim);padding:4px 0 8px">No custom events yet — create one to turn a condition into a named, reusable trigger.</div>';
-      return;
+      return 0;
     }
     el.innerHTML = events.map(ev => `
       <div class="card" style="margin-bottom:8px;display:flex;align-items:center;gap:12px;padding:12px 14px;border-left:3px solid var(--c-hook)">
@@ -1180,7 +1199,8 @@ async function renderCustomEvents() {
       try { await api('DELETE', '/custom-events/' + encodeURIComponent(b.dataset.ceDel)); toast('Custom event removed'); loadHooks(); }
       catch (e) { toast(e.message, 'error'); }
     });
-  } catch { el.innerHTML = ''; }
+    return events.length;
+  } catch { el.innerHTML = ''; return 0; }
 }
 
 let _ceProvider = 'claude-cli';
@@ -1327,11 +1347,11 @@ document.getElementById('ceDoneClose').onclick = () => document.getElementById('
 function renderElsewhereHooks(items) {
   const wrap = document.getElementById('hook-elsewhere-wrap');
   if (!wrap) return;
-  if (!items.length) { wrap.innerHTML = ''; return; }
+  if (!items.length) {
+    wrap.innerHTML = '<div style="font-size:12px;color:var(--text-dim);padding:8px 0">No scripts found inside skills or plugins.</div>';
+    return;
+  }
   wrap.innerHTML = `
-    <div style="font-size:12px;color:var(--text-dim);margin:18px 0 8px;font-weight:600;text-transform:uppercase;letter-spacing:.5px">
-      Scripts &amp; hooks elsewhere in .claude <span style="font-weight:400;text-transform:none">(inside skills, plugins…)</span>
-    </div>
     ${items.map(f => `
       <div class="card" style="margin-bottom:6px;display:flex;align-items:center;gap:10px;padding:10px 14px">
         <div style="flex:1;min-width:0">
@@ -3532,8 +3552,25 @@ function kbPopulateForm() {
     `Actions in ${ctx}: ` + (KB_CATALOG[ctx] || []).map(x => x.a).join(' · ');
 }
 
-function kbRenderCurrent(parsed) {
+function kbRenderCurrent(parsed, rawContent) {
   const el = document.getElementById('kb-current');
+  // File exists but isn't the official { bindings: [...] } shape (e.g. created
+  // by an older tool) — say so explicitly and offer a one-click fix.
+  if (rawContent && rawContent.trim() && !parsed) {
+    el.innerHTML = `
+      <div class="card" style="padding:12px 14px;font-size:12.5px;border-left:3px solid var(--warning)">
+        ⚠ <strong>keybindings.json exists but isn't in Claude Code's official format</strong> (an object with a <code>bindings</code> array), so Claude Code ignores it.
+        Review it in the raw editor below, or
+        <button class="btn btn-primary btn-sm" id="kbConvertBtn" style="margin-left:6px">Replace with a valid starter</button>
+      </div>`;
+    document.getElementById('kbConvertBtn').onclick = async () => {
+      if (!confirm('Replace the current keybindings.json with the official-format starter? The old content will be lost.')) return;
+      await api('PUT', '/keybindings', { content: JSON.stringify(KB_SCAFFOLD, null, 2) });
+      toast('keybindings.json converted to the official format');
+      loadKeybindings();
+    };
+    return;
+  }
   if (!parsed || !parsed.bindings.length || !parsed.bindings.some(b => Object.keys(b.bindings || {}).length)) {
     el.innerHTML = '<div style="font-size:12px;color:var(--text-dim);padding:4px 0 8px">No custom bindings yet — Claude Code is using all defaults. Add one below.</div>';
     return;
@@ -3572,11 +3609,14 @@ async function loadKeybindings() {
   document.getElementById('keybindingsCreateBtn').style.display = exists ? 'none' : 'inline-flex';
   keybindingsContent = content || JSON.stringify(KB_SCAFFOLD, null, 2);
   kbPopulateForm();
-  kbRenderCurrent(exists ? kbParse(content) : null);
+  kbRenderCurrent(exists ? kbParse(content) : null, exists ? content : '');
   if (!keybindingsEditor && monacoReady) keybindingsEditor = createEditor('keybindings-editor-wrap', 'json', keybindingsContent);
   else if (keybindingsEditor) keybindingsEditor.setValue(keybindingsContent);
   else document.getElementById('keybindings-editor-wrap').innerHTML = '<div style="padding:20px;color:var(--text-muted)">Loading editor…</div>';
 }
+
+// Populate the context picker immediately at load — never an empty select
+kbPopulateForm();
 
 document.getElementById('kbAddBtn').onclick = async () => {
   const context = document.getElementById('kbContext').value;

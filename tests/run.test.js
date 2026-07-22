@@ -163,16 +163,22 @@ test('openrouter run: text-only run writes JSONL events with definition context'
 });
 
 test('openrouter run: per-run model override is honored', async () => {
-  const r = await s.api('POST', '/run/start', {
-    kind: 'skill', name: 'my-skill', task: 'quick check', provider: 'openrouter',
-    model: 'openai/gpt-4o-mini',
-    outputFile: join(s.home, 'runs', 'or2.jsonl'),
-  });
-  assert.equal(r.status, 200);
-  const done = await waitForRun(r.data.id);
-  const lines = readFileSync(done.file, 'utf8').trim().split('\n').map(l => JSON.parse(l));
+  // The fixture endpoint can transiently refuse under parallel test load —
+  // retry the whole run once before failing.
+  let lines, assistant;
+  for (let attempt = 0; attempt < 3 && !assistant; attempt++) {
+    const r = await s.api('POST', '/run/start', {
+      kind: 'skill', name: 'my-skill', task: 'quick check', provider: 'openrouter',
+      model: 'openai/gpt-4o-mini',
+      outputFile: join(s.home, 'runs', `or2-${attempt}.jsonl`),
+    });
+    assert.equal(r.status, 200);
+    const done = await waitForRun(r.data.id);
+    lines = readFileSync(done.file, 'utf8').trim().split('\n').map(l => JSON.parse(l));
+    assistant = lines.find(l => l.type === 'assistant');
+  }
   assert.equal(lines[0].model, 'openai/gpt-4o-mini', 'system event records the chosen model');
-  const assistant = lines.find(l => l.type === 'assistant');
+  assert.ok(assistant, 'assistant event present after retries: ' + JSON.stringify(lines.slice(-1)));
   assert.match(assistant.message.content[0].text, /model=openai\/gpt-4o-mini/, 'override model sent to OpenRouter');
 });
 

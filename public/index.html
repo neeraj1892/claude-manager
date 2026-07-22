@@ -283,30 +283,44 @@
       </div>
       <!-- Installed panel -->
       <div id="hooks-installed-panel" style="margin-top:16px">
-        <div class="hooks-layout">
-          <div>
-            <div style="font-size:13px;font-weight:600;color:var(--text-muted);margin-bottom:10px;text-transform:uppercase;letter-spacing:.06em">Hook Events (settings.json)</div>
-            <div id="hook-events-list"></div>
-            <button class="btn btn-secondary btn-sm mt-2" id="addHookEventBtn">+ Add Hook…</button>
-          </div>
-          <div>
-            <div style="font-size:13px;font-weight:600;color:var(--text-muted);margin-bottom:10px;text-transform:uppercase;letter-spacing:.06em">Hook Files (hooks/)</div>
-            <div id="hook-files-list"></div>
+        <!-- One thing at a time: sub-tabs instead of a wall of panels -->
+        <div class="hook-subtabs" id="hookSubtabs">
+          <button class="hook-subtab active" data-hook-sub="events">⚡ Events <span class="hook-subtab-count" id="hsub-count-events">0</span></button>
+          <button class="hook-subtab" data-hook-sub="files">📄 Hook Files <span class="hook-subtab-count" id="hsub-count-files">0</span></button>
+          <button class="hook-subtab" data-hook-sub="custom">🧬 Custom Events <span class="hook-subtab-count" id="hsub-count-custom">0</span></button>
+          <button class="hook-subtab" data-hook-sub="elsewhere">📦 In Skills &amp; Plugins <span class="hook-subtab-count" id="hsub-count-elsewhere">0</span></button>
+        </div>
 
-            <!-- Custom (derived) events -->
-            <div style="display:flex;align-items:center;gap:10px;margin:20px 0 8px">
-              <div style="font-size:12px;color:var(--text-dim);font-weight:600;text-transform:uppercase;letter-spacing:.5px;flex:1">Custom Events</div>
-              <button class="btn btn-primary btn-sm" id="newCustomEventBtn">🧬 Create Custom Event</button>
-            </div>
-            <div class="tab-explainer" style="margin-top:0">
+        <div id="hook-sub-events" class="hook-subpanel">
+          <div style="font-size:12px;color:var(--text-muted);margin-bottom:12px">Which scripts run at which lifecycle events — the <code>hooks</code> wiring in <code>settings.json</code>. A hook file only fires if it's wired here.</div>
+          <div id="hook-events-list"></div>
+          <button class="btn btn-secondary btn-sm mt-2" id="addHookEventBtn">+ Add Hook…</button>
+        </div>
+
+        <div id="hook-sub-files" class="hook-subpanel" style="display:none">
+          <div style="font-size:12px;color:var(--text-muted);margin-bottom:12px">Scripts in <code>~/.claude/hooks/</code>. Files here do nothing until wired to an event in the <strong>⚡ Events</strong> tab.</div>
+          <div id="hook-files-list"></div>
+        </div>
+
+        <div id="hook-sub-custom" class="hook-subpanel" style="display:none">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+            <div style="font-size:12px;color:var(--text-muted);flex:1">Named, derived events — a detector script bound to a built-in event that fires on one precise condition.</div>
+            <button class="btn btn-primary btn-sm" id="newCustomEventBtn">🧬 Create Custom Event</button>
+          </div>
+          <details style="margin-bottom:12px">
+            <summary style="cursor:pointer;font-size:12px;color:var(--text-muted)">What is a custom event?</summary>
+            <div class="tab-explainer" style="margin-top:8px">
               <div class="tab-explainer-what">Claude Code only fires its built-in events — a <strong>custom event</strong> is a derived one: a hook bound to the right built-in event whose script detects <em>one precise condition</em> and acts only then, giving that condition a name of its own.</div>
               <div class="tab-explainer-why">💡 <strong>Why use it:</strong> "when Claude pushes to git", "when a file over 1&nbsp;MB is written", "when tests fail" aren't events Claude Code knows — but a custom event makes them real, reusable triggers.</div>
               <div class="tab-explainer-ex"><strong>Example:</strong> <code>GitPushDetected</code> = a <code>PreToolUse</code> hook matching <code>Bash</code> that fires only on <code>git push</code> commands and blocks them until tests have run.</div>
             </div>
-            <div id="custom-events-list"></div>
+          </details>
+          <div id="custom-events-list"></div>
+        </div>
 
-            <div id="hook-elsewhere-wrap"></div>
-          </div>
+        <div id="hook-sub-elsewhere" class="hook-subpanel" style="display:none">
+          <div style="font-size:12px;color:var(--text-muted);margin-bottom:12px">Hook and helper scripts shipped <em>inside</em> installed skills and plugins — view, edit, or explain them here.</div>
+          <div id="hook-elsewhere-wrap"></div>
         </div>
       </div>
       <!-- Hook Store panel -->

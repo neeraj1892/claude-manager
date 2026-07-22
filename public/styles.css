@@ -1646,3 +1646,20 @@ body.light {
   padding: 1px 5px; border-radius: 4px;
   font-size: 11px;
 }
+
+/* Hooks sub-tabs — segmented, counts inline */
+.hook-subtabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 16px; }
+.hook-subtab {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 14px; border-radius: 999px;
+  border: 1px solid var(--border); background: var(--surface2);
+  color: var(--text-muted); font-size: 13px; font-weight: 550; cursor: pointer;
+  transition: background .15s, color .15s, border-color .15s;
+}
+.hook-subtab:hover { background: var(--surface3); color: var(--text); }
+.hook-subtab.active { background: var(--accent-dim); color: var(--accent); border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); font-weight: 650; }
+.hook-subtab-count {
+  background: color-mix(in srgb, var(--text) 8%, transparent);
+  border-radius: 999px; padding: 0 7px; font-size: 11px; font-weight: 700;
+}
+.hook-subtab.active .hook-subtab-count { background: color-mix(in srgb, var(--accent) 18%, transparent); }
