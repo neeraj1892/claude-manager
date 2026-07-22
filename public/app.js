@@ -1143,8 +1143,128 @@ async function loadHooks() {
   if (data.settingsError) toast(data.settingsError, 'error');
   renderHookEvents(data.settings || {});
   renderHookFiles(data.files || []);
+  renderCustomEvents();
   renderElsewhereHooks(data.elsewhere || []);
 }
+
+// ===== CUSTOM (DERIVED) EVENTS =====
+async function renderCustomEvents() {
+  const el = document.getElementById('custom-events-list');
+  if (!el) return;
+  try {
+    const events = await api('GET', '/custom-events');
+    if (!events.length) {
+      el.innerHTML = '<div style="font-size:12px;color:var(--text-dim);padding:4px 0 8px">No custom events yet — create one to turn a condition into a named, reusable trigger.</div>';
+      return;
+    }
+    el.innerHTML = events.map(ev => `
+      <div class="card" style="margin-bottom:8px;display:flex;align-items:center;gap:12px;padding:12px 14px;border-left:3px solid var(--c-hook)">
+        <span style="font-size:16px">🧬</span>
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:650;font-size:13px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            ${escHtml(ev.name)}
+            <span class="badge badge-muted" style="font-size:10px">on ${escHtml(ev.underlyingEvent)}${ev.matcher ? ' · ' + escHtml(ev.matcher) : ''}</span>
+            ${ev.wired && ev.fileExists
+              ? '<span class="badge badge-success" style="font-size:10px">✓ active</span>'
+              : `<span class="badge badge-warning" style="font-size:10px">⚠ ${!ev.fileExists ? 'script missing' : 'not wired'}</span>`}
+          </div>
+          <div style="font-size:12px;color:var(--text-muted)">${escHtml(ev.description || '')}</div>
+          ${ev.how ? `<div style="font-size:11px;color:var(--text-dim);margin-top:2px">${escHtml(ev.how)}</div>` : ''}
+        </div>
+        <button class="btn btn-secondary btn-sm" data-ce-edit="${escHtml(ev.filename)}">Edit script</button>
+        <button class="btn btn-danger btn-sm" data-ce-del="${escHtml(ev.name)}">Delete</button>
+      </div>`).join('');
+    el.querySelectorAll('[data-ce-edit]').forEach(b => b.onclick = () => openFileEditor('hooks/' + b.dataset.ceEdit));
+    el.querySelectorAll('[data-ce-del]').forEach(b => b.onclick = async () => {
+      if (!confirm(`Delete custom event "${b.dataset.ceDel}"? This removes its script and unwires it.`)) return;
+      try { await api('DELETE', '/custom-events/' + encodeURIComponent(b.dataset.ceDel)); toast('Custom event removed'); loadHooks(); }
+      catch (e) { toast(e.message, 'error'); }
+    });
+  } catch { el.innerHTML = ''; }
+}
+
+let _ceProvider = 'claude-cli';
+let _ceDef = null;
+
+function setCeProvider(p) {
+  _ceProvider = p;
+  document.getElementById('ceProvCli').classList.toggle('active', p === 'claude-cli');
+  document.getElementById('ceProvOr').classList.toggle('active', p === 'openrouter');
+}
+document.getElementById('ceProvCli').onclick = () => setCeProvider('claude-cli');
+document.getElementById('ceProvOr').onclick  = () => setCeProvider('openrouter');
+
+document.getElementById('newCustomEventBtn').onclick = async () => {
+  document.getElementById('ceWhen').value = '';
+  document.getElementById('ceAction').value = '';
+  document.getElementById('ceSetup').style.display = '';
+  document.getElementById('ceReview').style.display = 'none';
+  document.getElementById('customEventModal').classList.add('open');
+  try {
+    const cfg = await api('GET', '/ai-config');
+    setCeProvider(cfg.claudeCli ? 'claude-cli' : 'openrouter');
+  } catch { setCeProvider('claude-cli'); }
+  setTimeout(() => document.getElementById('ceWhen').focus(), 60);
+};
+document.getElementById('ceClose').onclick  = () => document.getElementById('customEventModal').classList.remove('open');
+document.getElementById('ceCancel').onclick = () => document.getElementById('customEventModal').classList.remove('open');
+document.getElementById('ceBack').onclick   = () => {
+  document.getElementById('ceSetup').style.display = '';
+  document.getElementById('ceReview').style.display = 'none';
+};
+document.querySelectorAll('#customEventModal [data-cewhen]').forEach(chip => {
+  chip.onclick = () => {
+    document.getElementById('ceWhen').value = chip.dataset.cewhen;
+    document.getElementById('ceAction').value = chip.dataset.ceact || '';
+  };
+});
+
+document.getElementById('ceGenerate').onclick = async () => {
+  const when = document.getElementById('ceWhen').value.trim();
+  if (!when) { toast('Describe when the event should fire', 'error'); return; }
+  const btn = document.getElementById('ceGenerate');
+  btn.disabled = true; btn.textContent = 'Designing…';
+  try {
+    _ceDef = await api('POST', '/ai/create-custom-event', {
+      description: when,
+      action: document.getElementById('ceAction').value.trim(),
+      provider: _ceProvider,
+    });
+    document.getElementById('ceName').value = _ceDef.name;
+    document.getElementById('ceFilename').value = _ceDef.filename;
+    document.getElementById('ceWiring').innerHTML =
+      `Wires to <strong>${escHtml(_ceDef.underlyingEvent)}</strong>${_ceDef.matcher ? ` with matcher <code>${escHtml(_ceDef.matcher)}</code>` : ''} — ${escHtml(_ceDef.description || '')}`;
+    document.getElementById('ceHow').textContent = _ceDef.how ? '⚙️ ' + _ceDef.how : '';
+    document.getElementById('ceScript').value = _ceDef.hookScript;
+    document.getElementById('ceSetup').style.display = 'none';
+    document.getElementById('ceReview').style.display = '';
+  } catch (e) {
+    toast('Design failed: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false; btn.textContent = '🧬 Design Event';
+  }
+};
+
+document.getElementById('ceInstall').onclick = async () => {
+  if (!_ceDef) return;
+  const btn = document.getElementById('ceInstall');
+  btn.disabled = true; btn.textContent = 'Installing…';
+  try {
+    const r = await api('POST', '/custom-events/install', {
+      ..._ceDef,
+      name: document.getElementById('ceName').value.trim(),
+      filename: document.getElementById('ceFilename').value.trim(),
+      hookScript: document.getElementById('ceScript').value,
+    });
+    document.getElementById('customEventModal').classList.remove('open');
+    toast(`Custom event installed — wired to ${r.wiredTo}`);
+    loadHooks();
+  } catch (e) {
+    toast(e.message, 'error');
+  } finally {
+    btn.disabled = false; btn.textContent = '✓ Install & Wire Up';
+  }
+};
 
 // Hook/script files that live inside skills, plugins, agents, etc.
 function renderElsewhereHooks(items) {

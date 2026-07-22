@@ -3066,6 +3066,141 @@ app.post('/api/updates/cli', (req, res) => {
   });
 });
 
+// --- API: Custom Events (derived events, hook-event-creator) ---
+// Claude Code cannot fire brand-new runtime events — but a CUSTOM EVENT can be
+// derived: attach a hook to the right built-in event, detect one precise
+// condition in the script, and act only then. This gives the condition a name,
+// a definition file, and a registry entry — the hook-event equivalent of
+// skill-creator.
+
+const CUSTOM_EVENT_PROMPT = () => `You are a Claude Code custom-event designer.
+
+Claude Code fires only its built-in lifecycle events. A CUSTOM EVENT is a
+derived event: a hook attached to the correct built-in event whose script
+detects ONE precise condition and acts only then — giving that condition a
+name of its own.
+
+Given the user's description, output ONLY raw JSON — no prose, no fences:
+{
+  "name": "CamelCaseEventName",
+  "description": "One sentence: when this custom event fires.",
+  "underlyingEvent": "one of: ${BUILTIN_HOOK_EVENTS.join(', ')}",
+  "matcher": "tool-name regex for PreToolUse/PostToolUse/PostToolUseFailure/Permission* (e.g. \\"Bash\\", \\"Write|Edit\\"); empty string otherwise",
+  "filename": "kebab-case-name.mjs",
+  "how": "2-3 sentences: how detection works and what the action does.",
+  "hookScript": "the complete Node .mjs script"
+}
+
+hookScript rules — violations invalidate the output:
+- Starts with #!/usr/bin/env node and reads stdin JSON via readline.
+- The FIRST comment block documents: CUSTOM EVENT <name>, fires when, underlying event, action taken.
+- Detects the condition precisely; when it does NOT match, exit 0 immediately (the custom event simply did not fire).
+- FAIL-OPEN: all logic inside try/catch, exit 0 in catch — a crashing hook must never block Claude.
+- Performs the user's requested action: block (stdout {"decision":"block","reason":"[<name>] ..."}), log to a file, notify, or redirect Claude.
+- Prefix any user-visible reason/log line with the event name in brackets so it is recognizable.
+
+Request: `;
+
+app.post('/api/ai/create-custom-event', async (req, res) => {
+  const { description, action = '', provider } = req.body;
+  if (!description?.trim()) return res.status(400).json({ error: 'description is required — when should this event fire?' });
+  const fullPrompt = CUSTOM_EVENT_PROMPT()
+    + `When it should fire: ${description.trim()}`
+    + (action.trim() ? `\nWhat should happen when it fires: ${action.trim()}` : '\nWhat should happen when it fires: block the action with a clear reason.');
+  try {
+    let raw;
+    if (provider === 'openrouter') {
+      const cfg = loadConfig();
+      if (!cfg.openRouterKey) return res.status(400).json({ error: 'OpenRouter API key not configured.' });
+      raw = await callOpenRouter(cfg.openRouterKey, cfg.openRouterModel || 'anthropic/claude-sonnet-4-5', '', fullPrompt);
+    } else {
+      if (!claudeCliAvailable) return res.status(400).json({ error: 'Claude CLI not found. Use OpenRouter instead.' });
+      raw = await callClaudeCli(fullPrompt);
+    }
+    const def = JSON.parse(raw.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim());
+    if (!/^[A-Z][A-Za-z0-9]{2,39}$/.test(def.name || '')) return res.status(500).json({ error: 'AI returned an invalid event name — try again.' });
+    if (!BUILTIN_HOOK_EVENTS.includes(def.underlyingEvent)) return res.status(500).json({ error: `AI chose an unknown underlying event ("${def.underlyingEvent}") — try rephrasing.` });
+    if (!def.hookScript?.startsWith('#!')) return res.status(500).json({ error: 'AI returned an invalid hook script — try again.' });
+    if (!/^[a-z0-9][a-z0-9-]*\.(mjs|js|py|sh)$/.test(def.filename || '')) def.filename = def.name.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase() + '.mjs';
+    res.json(def);
+  } catch (e) {
+    if (e instanceof SyntaxError) return res.status(500).json({ error: 'AI returned invalid JSON. Try again.' });
+    res.status(500).json({ error: e.message });
+  }
+});
+
+const HOOK_RUNNERS = { '.mjs': 'node', '.js': 'node', '.py': 'python3', '.sh': 'bash' };
+
+app.get('/api/custom-events', (req, res) => {
+  const cfg = loadConfig();
+  const settings = readJson(join(claudeDir, 'settings.json'));
+  const events = (cfg.customEvents || []).map(ev => {
+    const filePath = join(claudeDir, 'hooks', ev.filename);
+    const wired = JSON.stringify(settings.hooks || {}).includes(ev.filename);
+    return { ...ev, fileExists: existsSync(filePath), wired };
+  });
+  res.json(events);
+});
+
+app.post('/api/custom-events/install', (req, res) => {
+  const { name, description = '', underlyingEvent, matcher = '', filename, hookScript, how = '' } = req.body;
+  if (!/^[A-Z][A-Za-z0-9]{2,39}$/.test(name || '')) return res.status(400).json({ error: 'name must be CamelCase (e.g. GitPushDetected)' });
+  if (!BUILTIN_HOOK_EVENTS.includes(underlyingEvent)) return res.status(400).json({ error: 'underlyingEvent must be a real Claude Code event' });
+  if (!/^[a-z0-9][a-z0-9-]*\.(mjs|js|py|sh)$/.test(filename || '')) return res.status(400).json({ error: 'filename must be kebab-case with .mjs/.js/.py/.sh extension' });
+  if (!hookScript?.trim()) return res.status(400).json({ error: 'hookScript is required' });
+  const cfg = loadConfig();
+  if ((cfg.customEvents || []).some(e => e.name === name)) return res.status(409).json({ error: `Custom event "${name}" already exists` });
+  try {
+    // 1) write the script
+    const hooksDir = join(claudeDir, 'hooks');
+    ensureDir(hooksDir);
+    const filePath = safePath(hooksDir, filename);
+    atomicWrite(filePath, hookScript);
+    if (process.platform !== 'win32') { try { execSync(`chmod +x "${filePath.replace(/"/g, '\\"')}"`, { shell: true }); } catch {} }
+    // 2) wire it to the underlying event in settings.json
+    const settingsPath = join(claudeDir, 'settings.json');
+    const settings = readJson(settingsPath);
+    settings.hooks = settings.hooks || {};
+    const groups = settings.hooks[underlyingEvent] = settings.hooks[underlyingEvent] || [];
+    const runner = HOOK_RUNNERS[filename.match(/\.[^.]+$/)[0]] || 'node';
+    const command = `${runner} "${filePath}"`;
+    let group = groups.find(g => (g.matcher || '') === (matcher || ''));
+    if (!group) { group = { ...(matcher ? { matcher } : {}), hooks: [] }; groups.push(group); }
+    group.hooks = group.hooks || [];
+    if (!group.hooks.some(h => h.command === command)) group.hooks.push({ type: 'command', command });
+    writeJson(settingsPath, settings);
+    // 3) record in the registry
+    cfg.customEvents = cfg.customEvents || [];
+    cfg.customEvents.push({ name, description, underlyingEvent, matcher, filename, how, createdAt: new Date().toISOString() });
+    saveConfig(cfg);
+    res.status(201).json({ ok: true, name, file: filePath, wiredTo: underlyingEvent + (matcher ? ` (matcher: ${matcher})` : '') });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/custom-events/:name', (req, res) => {
+  const cfg = loadConfig();
+  const ev = (cfg.customEvents || []).find(e => e.name === req.params.name);
+  if (!ev) return res.status(404).json({ error: 'Custom event not found' });
+  try {
+    // unwire from settings.json
+    const settingsPath = join(claudeDir, 'settings.json');
+    const settings = readJson(settingsPath);
+    if (settings.hooks?.[ev.underlyingEvent]) {
+      settings.hooks[ev.underlyingEvent] = settings.hooks[ev.underlyingEvent]
+        .map(g => ({ ...g, hooks: (g.hooks || []).filter(h => !(h.command || '').includes(ev.filename)) }))
+        .filter(g => (g.hooks || []).length);
+      if (!settings.hooks[ev.underlyingEvent].length) delete settings.hooks[ev.underlyingEvent];
+      writeJson(settingsPath, settings);
+    }
+    // delete the script
+    try { unlinkSync(join(claudeDir, 'hooks', ev.filename)); } catch {}
+    // drop from registry
+    cfg.customEvents = cfg.customEvents.filter(e => e.name !== ev.name);
+    saveConfig(cfg);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // --- Start ---
 function openBrowser(url) {
   const cmd = process.platform === 'win32' ? `start "" "${url}"`

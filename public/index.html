@@ -292,6 +292,19 @@
           <div>
             <div style="font-size:13px;font-weight:600;color:var(--text-muted);margin-bottom:10px;text-transform:uppercase;letter-spacing:.06em">Hook Files (hooks/)</div>
             <div id="hook-files-list"></div>
+
+            <!-- Custom (derived) events -->
+            <div style="display:flex;align-items:center;gap:10px;margin:20px 0 8px">
+              <div style="font-size:12px;color:var(--text-dim);font-weight:600;text-transform:uppercase;letter-spacing:.5px;flex:1">Custom Events</div>
+              <button class="btn btn-primary btn-sm" id="newCustomEventBtn">🧬 Create Custom Event</button>
+            </div>
+            <div class="tab-explainer" style="margin-top:0">
+              <div class="tab-explainer-what">Claude Code only fires its built-in events — a <strong>custom event</strong> is a derived one: a hook bound to the right built-in event whose script detects <em>one precise condition</em> and acts only then, giving that condition a name of its own.</div>
+              <div class="tab-explainer-why">💡 <strong>Why use it:</strong> "when Claude pushes to git", "when a file over 1&nbsp;MB is written", "when tests fail" aren't events Claude Code knows — but a custom event makes them real, reusable triggers.</div>
+              <div class="tab-explainer-ex"><strong>Example:</strong> <code>GitPushDetected</code> = a <code>PreToolUse</code> hook matching <code>Bash</code> that fires only on <code>git push</code> commands and blocks them until tests have run.</div>
+            </div>
+            <div id="custom-events-list"></div>
+
             <div id="hook-elsewhere-wrap"></div>
           </div>
         </div>
@@ -723,6 +736,70 @@
     <div class="template-gallery-footer">
       <button class="btn btn-ghost" id="templateModalCancel">Cancel</button>
       <button class="btn btn-primary" id="templateModalOpen">Open Editor →</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== CUSTOM EVENT CREATOR MODAL ===== -->
+<div class="overlay" id="customEventModal">
+  <div class="skill-gen-dialog" style="max-width:680px">
+    <div class="skill-gen-header">
+      <div>
+        <h3 style="margin:0 0 2px">🧬 Custom Event Creator</h3>
+        <p style="margin:0;font-size:12px;color:var(--text-muted)">Name a condition Claude Code doesn't know — the AI picks the underlying event, writes the detector, and wires it up</p>
+      </div>
+      <button class="icon-btn" id="ceClose">✕</button>
+    </div>
+
+    <div id="ceSetup">
+      <div class="form-group">
+        <label class="form-label">When should it fire?</label>
+        <textarea id="ceWhen" rows="2" placeholder="e.g. whenever Claude runs a git push command"></textarea>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px">
+          <span class="matcher-chip" data-cewhen="whenever Claude runs a git push command" data-ceact="block it until the test suite has been run this session">Git push guard</span>
+          <span class="matcher-chip" data-cewhen="whenever Claude writes or edits a file larger than 1 MB" data-ceact="log the path and size to ~/claude-large-writes.log and warn">Large file write</span>
+          <span class="matcher-chip" data-cewhen="whenever a Bash command exits with a non-zero status" data-ceact="log the command and error output to ~/.claude/failures.jsonl">Command failed</span>
+          <span class="matcher-chip" data-cewhen="whenever Claude edits a database migration file" data-ceact="block it and ask the user to review migrations manually">Migration guard</span>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">What should happen when it fires?</label>
+        <textarea id="ceAction" rows="2" placeholder="e.g. block the command with a clear reason / log it to a file / redirect Claude to run tests first"></textarea>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Design with</label>
+        <div style="display:flex;gap:6px;margin-top:4px">
+          <button class="gen-type-tab active" id="ceProvCli" type="button">⚡ Claude CLI</button>
+          <button class="gen-type-tab" id="ceProvOr" type="button">🌐 OpenRouter</button>
+        </div>
+      </div>
+      <div class="folder-dialog-actions">
+        <button class="btn btn-ghost" id="ceCancel">Cancel</button>
+        <button class="btn btn-primary" id="ceGenerate">🧬 Design Event</button>
+      </div>
+    </div>
+
+    <div id="ceReview" style="display:none">
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px">
+        <div style="flex:1;min-width:180px">
+          <label class="form-label">Event name</label>
+          <input type="text" id="ceName">
+        </div>
+        <div style="flex:1;min-width:180px">
+          <label class="form-label">Script filename</label>
+          <input type="text" id="ceFilename">
+        </div>
+      </div>
+      <div id="ceWiring" style="background:var(--accent-dim);border:1px solid color-mix(in srgb, var(--accent) 35%, transparent);border-radius:var(--radius-sm);padding:10px 12px;font-size:12px;margin-bottom:10px"></div>
+      <div id="ceHow" style="font-size:12px;color:var(--text-muted);margin-bottom:10px"></div>
+      <div class="form-group">
+        <label class="form-label">Detector script <span style="font-weight:400;color:var(--text-dim)">(edit if needed)</span></label>
+        <textarea id="ceScript" rows="12" style="font-family:monospace;font-size:11px"></textarea>
+      </div>
+      <div class="folder-dialog-actions">
+        <button class="btn btn-ghost" id="ceBack">← Redesign</button>
+        <button class="btn btn-primary" id="ceInstall">✓ Install &amp; Wire Up</button>
+      </div>
     </div>
   </div>
 </div>

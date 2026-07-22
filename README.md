@@ -17,6 +17,7 @@ Claude Manager puts all of it in one place: browse it, edit it, understand it (w
 ### Manage everything in `~/.claude`
 - **Skills** — create, edit, delete; a **📂 Files explorer** opens every nested file of a skill (scripts, references, bundled hooks) for editing or AI explanation.
 - **Agents** — full CRUD, including agents nested in subfolders and agents shipped inside installed plugins.
+- **Custom Events** — Claude Code cannot fire new runtime events, but the 🧬 Custom Event Creator derives them: describe a condition ("when Claude pushes to git"), the AI picks the right built-in event, writes a fail-open detector script, wires it into settings.json, and registers it with a name and description.
 - **Hooks** — hook files (Node/Python/Bash/PowerShell) plus the lifecycle-event wiring in `settings.json`; also surfaces hook/script files living *inside* skills and plugins. Broken `settings.json`? The parse error is shown instead of a silently empty tab.
 - **Commands** — slash-command markdown files with full CRUD.
 - **CLAUDE.md, settings.json, keybindings.json** — direct editors with validation.
@@ -86,7 +87,7 @@ Any modal with a provider picker (Generate, Run, Compose) auto-detects: if the C
 npm test
 ```
 
-160 tests (Node's built-in `node --test`) covering every endpoint and scenario. Each test file boots an isolated server with its own temp `.claude` folder, temp `HOME`, isolated config, a local fixture marketplace/OpenRouter endpoint, and a fake `claude` CLI shim that records invocations — no network or real Claude Code install needed. See [`tests/README.md`](tests/README.md) for the full bug-fix history and scenario list.
+166 tests (Node's built-in `node --test`) covering every endpoint and scenario. Each test file boots an isolated server with its own temp `.claude` folder, temp `HOME`, isolated config, a local fixture marketplace/OpenRouter endpoint, and a fake `claude` CLI shim that records invocations — no network or real Claude Code install needed. See [`tests/README.md`](tests/README.md) for the full bug-fix history and scenario list.
 
 ## Security notes
 

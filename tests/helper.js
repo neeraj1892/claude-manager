@@ -27,6 +27,9 @@ if [ "$1" = "-p" ]; then
       ;;
   esac
   case "$PROMPT" in
+    *"custom-event designer"*)
+      printf '{"name":"GitPushDetected","description":"Fires when Claude runs git push.","underlyingEvent":"PreToolUse","matcher":"Bash","filename":"git-push-detected.mjs","how":"Inspects Bash tool input for git push and blocks it.","hookScript":"#!/usr/bin/env node\\\\n// CUSTOM EVENT GitPushDetected — fires when Claude runs git push\\\\nprocess.exit(0);"}'
+      ;;
     *"settings expert"*)
       printf '{"explanation":"Denies Claude access to env files.","patch":{"permissions":{"deny":["Read(.env)","Read(.env.*)"]},"model":"opus"}}'
       ;;
