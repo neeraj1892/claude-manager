@@ -733,7 +733,100 @@ document.getElementById('saveClaudeMd').onclick = async () => {
 let settingsRawEditor = null;
 let allowList = [], denyList = [], envVars = {};
 
+// ===== SETTINGS INSPECTOR (Files & Keys) =====
+// What each known settings key controls, where it's consumed, and where to edit it.
+const SETTINGS_KEY_DOC = {
+  // settings.json / settings.local.json
+  model:               { what: 'Default Claude model for every session.', edit: 'General tab' },
+  hooks:               { what: 'Lifecycle hook wiring — which scripts run on PreToolUse, PostToolUse, Stop, SessionStart…', edit: 'Hooks section' },
+  mcpServers:          { what: 'MCP server definitions (tools Claude can call).', edit: 'Plugins → ＋ Add MCP Server' },
+  enabledPlugins:      { what: 'Plugin on/off registry, written by `claude plugin install`.', edit: 'Plugins tab toggles' },
+  permissions:         { what: 'Tool allow/deny rules — what Claude may do without asking.', edit: 'Permissions tab' },
+  env:                 { what: 'Environment variables injected into every Claude session.', edit: 'Env Vars tab' },
+  apiKeyHelper:        { what: 'Script that outputs an API key at launch (advanced auth).', edit: 'Raw JSON tab' },
+  statusLine:          { what: 'Custom status line command for the terminal UI.', edit: 'Raw JSON tab' },
+  outputStyle:         { what: 'Active output style for responses.', edit: 'Raw JSON tab' },
+  includeCoAuthoredBy: { what: 'Adds "Co-Authored-By: Claude" to git commits.', edit: 'Raw JSON tab' },
+  cleanupPeriodDays:   { what: 'How long chat transcripts are kept before cleanup.', edit: 'Raw JSON tab' },
+  alwaysThinkingEnabled: { what: 'Extended thinking on by default.', edit: 'Raw JSON tab' },
+  forceLoginMethod:    { what: 'Pins login to claude.ai or console accounts.', edit: 'Raw JSON tab' },
+  theme:               { what: 'Terminal UI color theme.', edit: 'Raw JSON tab' },
+  verbose:             { what: 'Verbose output in the terminal UI.', edit: 'Raw JSON tab' },
+  spinnerTipsEnabled:  { what: 'Tips shown while Claude is working.', edit: 'Raw JSON tab' },
+  feedbackSurveyState: { what: 'Internal survey bookkeeping.', edit: 'Managed — leave as-is' },
+  // ~/.claude.json
+  projects:            { what: 'Per-project state: local-scope MCP servers, history, trust decisions.', edit: 'Managed by Claude Code' },
+  numStartups:         { what: 'Launch counter.', edit: 'Managed by Claude Code' },
+  installMethod:       { what: 'How Claude Code was installed.', edit: 'Managed by Claude Code' },
+  autoUpdates:         { what: 'Whether Claude Code self-updates.', edit: 'Managed by Claude Code' },
+  oauthAccount:        { what: 'Your logged-in account.', edit: 'Managed — use `claude login`' },
+  userID:              { what: 'Anonymous user identifier.', edit: 'Managed by Claude Code' },
+  tipsHistory:         { what: 'Which onboarding tips you have seen.', edit: 'Managed by Claude Code' },
+  firstStartTime:      { what: 'First launch timestamp.', edit: 'Managed by Claude Code' },
+};
+
+async function loadSettingsInspector() {
+  const el = document.getElementById('settings-inspector');
+  if (!el) return;
+  el.innerHTML = '<div style="padding:20px;color:var(--text-muted)">Reading configuration files…</div>';
+  try {
+    const { files } = await api('GET', '/settings/inspect');
+    el.innerHTML = files.map(f => {
+      const status = !f.exists
+        ? '<span class="badge badge-muted">not present</span>'
+        : f.error
+          ? `<span class="badge" style="background:var(--danger-bg);color:var(--danger)" title="${escHtml(f.error)}">✗ invalid JSON</span>`
+          : '<span class="badge badge-success">✓ valid</span>';
+      const editBtn = !f.exists ? '' : f.id === 'settings'
+        ? `<button class="btn btn-secondary btn-sm" onclick="document.querySelector('#settings-tabs [data-tab=raw-json]').click()">Edit raw</button>`
+        : f.id === 'settings-local'
+          ? `<button class="btn btn-secondary btn-sm" onclick="openFileEditor('settings.local.json')">Edit</button>`
+          : f.id === 'keybindings'
+            ? `<button class="btn btn-secondary btn-sm" onclick="navigate('keybindings')">Edit</button>`
+            : '<span class="badge badge-warning" title="Managed by the Claude Code CLI — edit via claude commands">🔒 managed</span>';
+      const rows = f.keys.map(k => {
+        const doc = SETTINGS_KEY_DOC[k.key] || {};
+        const managed = !f.editable || (doc.edit || '').startsWith('Managed');
+        const valueBadge = k.count !== undefined
+          ? `<span class="badge badge-muted">${k.count} ${k.type === 'array' ? 'items' : 'entries'}</span>`
+          : `<code style="font-size:11px">${escHtml(k.preview ?? k.type)}</code>`;
+        return `<tr>
+          <td style="font-family:monospace;font-size:12px;font-weight:600;white-space:nowrap">${escHtml(k.key)}</td>
+          <td>${valueBadge}</td>
+          <td style="font-size:12px;color:var(--text-muted)">${escHtml(doc.what || 'Custom / unrecognized key.')}</td>
+          <td style="font-size:11px;white-space:nowrap">${managed
+            ? `<span class="badge badge-warning" style="font-size:10px">🔒 ${escHtml(doc.edit || 'managed')}</span>`
+            : `<span class="badge badge-success" style="font-size:10px">✎ ${escHtml(doc.edit || 'Raw JSON tab')}</span>`}</td>
+        </tr>`;
+      }).join('');
+      return `
+        <div class="card" style="margin-bottom:14px;padding:0;overflow:hidden">
+          <div style="display:flex;align-items:center;gap:10px;padding:13px 16px;border-bottom:${f.exists && f.keys.length ? '1px solid var(--border)' : 'none'}">
+            <div style="flex:1;min-width:0">
+              <div style="font-weight:650;font-size:14px;display:flex;align-items:center;gap:8px">📄 ${escHtml(f.label)} ${status}
+                ${f.size ? `<span style="font-size:11px;color:var(--text-dim);font-weight:400">${f.size}</span>` : ''}</div>
+              <div style="font-size:12px;color:var(--text-muted);margin-top:2px">${escHtml(f.note)}</div>
+              <div style="font-size:10px;color:var(--text-dim);font-family:monospace;margin-top:2px">${escHtml(f.path)}</div>
+            </div>
+            ${editBtn}
+          </div>
+          ${f.error ? `<div style="padding:10px 16px;font-size:12px;color:var(--danger)">Parse error: ${escHtml(f.error)} — fix it to see the key breakdown.</div>` : ''}
+          ${f.exists && f.keys.length ? `
+            <table style="width:100%">
+              <thead><tr>
+                <th style="width:180px">Key</th><th style="width:110px">Value</th><th>What it controls</th><th style="width:170px">Where to change it</th>
+              </tr></thead>
+              <tbody>${rows}</tbody>
+            </table>` : (!f.exists ? '' : f.keys.length === 0 && !f.error ? '<div style="padding:10px 16px;font-size:12px;color:var(--text-dim)">Empty file.</div>' : '')}
+        </div>`;
+    }).join('');
+  } catch (e) {
+    el.innerHTML = `<div style="padding:16px;color:var(--danger)">${escHtml(e.message)}</div>`;
+  }
+}
+
 async function loadSettings() {
+  loadSettingsInspector();
   settingsData = await api('GET', '/settings');
   document.getElementById('settings-model').value = settingsData.model || '';
   renderHooksInSettings(settingsData.hooks || {});

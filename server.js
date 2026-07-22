@@ -743,6 +743,45 @@ app.put('/api/claude-md', (req, res) => {
 
 // --- API: Settings ---
 
+// Inspector: every settings file Claude Code reads — existence, validity,
+// and a summary of each top-level key so the UI can explain what's where.
+app.get('/api/settings/inspect', (req, res) => {
+  const describe = (filePath, id, label, editable, note) => {
+    const exists = existsSync(filePath);
+    let parsed = null, error = null, size = null;
+    if (exists) {
+      try { size = formatSize(statSync(filePath).size); } catch {}
+      try { parsed = JSON.parse(readFileSync(filePath, 'utf8')); }
+      catch (e) { error = e.message; }
+    }
+    const keys = (parsed && typeof parsed === 'object' && !Array.isArray(parsed))
+      ? Object.keys(parsed).map(k => {
+          const v = parsed[k];
+          return {
+            key: k,
+            type: Array.isArray(v) ? 'array' : v === null ? 'null' : typeof v,
+            count: v && typeof v === 'object' ? Object.keys(v).length : undefined,
+            preview: (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean')
+              ? String(v).slice(0, 80) : undefined,
+          };
+        })
+      : [];
+    return { id, label, path: filePath, exists, error, size, editable, note, keys };
+  };
+  res.json({
+    files: [
+      describe(join(claudeDir, 'settings.json'), 'settings', 'settings.json', true,
+        'Your main Claude Code configuration. Read on every session start.'),
+      describe(join(claudeDir, 'settings.local.json'), 'settings-local', 'settings.local.json', true,
+        'Personal overrides layered on top of settings.json — wins on conflicts. Not meant for version control.'),
+      describe(globalClaudeJsonPath(), 'global', '~/.claude.json', false,
+        'Global state managed by the Claude Code CLI: login, per-project data, MCP servers added via `claude mcp add`. Edit via claude commands, not by hand.'),
+      describe(join(claudeDir, 'keybindings.json'), 'keybindings', 'keybindings.json', true,
+        'Custom keyboard shortcuts for the Claude Code terminal UI.'),
+    ],
+  });
+});
+
 app.get('/api/settings', (req, res) => {
   res.json(readJson(join(claudeDir, 'settings.json')));
 });

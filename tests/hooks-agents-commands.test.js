@@ -124,6 +124,41 @@ test('commands: CRUD lifecycle', async () => {
 
 // ── Settings / CLAUDE.md / keybindings / overview / folder ──
 
+test('settings/inspect: lists all config files with key summaries', async () => {
+  await s.api('PUT', '/settings', { settings: { model: 'opus', mcpServers: { a: { command: 'npx' }, b: { command: 'npx' } }, env: { FOO: '1' } } });
+  const { status, data } = await s.api('GET', '/settings/inspect');
+  assert.equal(status, 200);
+  const ids = data.files.map(f => f.id);
+  for (const id of ['settings', 'settings-local', 'global', 'keybindings']) assert.ok(ids.includes(id), 'file listed: ' + id);
+
+  const settings = data.files.find(f => f.id === 'settings');
+  assert.equal(settings.exists, true);
+  assert.equal(settings.error, null);
+  assert.equal(settings.editable, true);
+  const modelKey = settings.keys.find(k => k.key === 'model');
+  assert.equal(modelKey.preview, 'opus');
+  const mcpKey = settings.keys.find(k => k.key === 'mcpServers');
+  assert.equal(mcpKey.count, 2, 'object keys counted');
+
+  const global = data.files.find(f => f.id === 'global');
+  assert.equal(global.editable, false, '~/.claude.json marked managed');
+
+  const local = data.files.find(f => f.id === 'settings-local');
+  assert.equal(local.exists, false, 'missing file reported as not present');
+});
+
+test('settings/inspect: unparseable file surfaces its error instead of hiding it', async () => {
+  const { writeFileSync } = require('fs');
+  const { join } = require('path');
+  writeFileSync(join(s.claudeDir, 'settings.local.json'), '{ broken:');
+  const { data } = await s.api('GET', '/settings/inspect');
+  const local = data.files.find(f => f.id === 'settings-local');
+  assert.equal(local.exists, true);
+  assert.ok(local.error, 'parse error reported');
+  assert.deepEqual(local.keys, []);
+  writeFileSync(join(s.claudeDir, 'settings.local.json'), '{}'); // restore
+});
+
 test('settings: get/put roundtrip; invalid body -> 400', async () => {
   assert.equal((await s.api('PUT', '/settings', { settings: { model: 'opus' } })).status, 200);
   const { data } = await s.api('GET', '/settings');

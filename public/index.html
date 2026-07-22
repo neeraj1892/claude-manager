@@ -118,14 +118,21 @@
         <button class="btn btn-primary" id="saveSettings">Save</button>
       </div>
       <div class="tabs" id="settings-tabs">
-        <button class="tab active" data-tab="general">General</button>
+        <button class="tab active" data-tab="files-keys">📋 Files &amp; Keys</button>
+        <button class="tab" data-tab="general">General</button>
         <button class="tab" data-tab="hooks-settings">Hooks</button>
         <button class="tab" data-tab="permissions">Permissions</button>
         <button class="tab" data-tab="env-vars">Env Vars</button>
         <button class="tab" data-tab="raw-json">Raw JSON</button>
         <button class="tab" data-tab="ai">AI Generation</button>
       </div>
-      <div id="settings-tab-general" class="tab-content active">
+      <div id="settings-tab-files-keys" class="tab-content active">
+        <div style="font-size:12px;color:var(--text-muted);margin:14px 0 10px">
+          Every configuration file Claude Code reads, what each key controls, and where to change it.
+        </div>
+        <div id="settings-inspector"></div>
+      </div>
+      <div id="settings-tab-general" class="tab-content">
         <div class="card" style="margin-top:16px">
           <div style="display:flex;flex-direction:column;gap:20px">
             <div class="form-group">
