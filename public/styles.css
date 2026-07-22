@@ -443,8 +443,6 @@ tr:last-child td { border-bottom: none; }
 tr:hover td { background: var(--surface2); }
 
 /* ===== HOOKS ===== */
-.hooks-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-.hooks-layout > div { min-width: 0; overflow: hidden; }
 .store-filter-bar { display: flex; gap: 8px; margin-bottom: 12px; align-items: center; flex-wrap: wrap; }
 .store-filter-bar input { flex: 1; min-width: 140px; max-width: 280px; }
 .store-filter-bar select { min-width: 0; flex: 1; max-width: 200px; }
@@ -1262,7 +1260,6 @@ hr.divider { border: none; border-top: 1px solid var(--border); margin: 4px 0; }
 @media (max-width: 680px) {
   #main { padding: 16px 14px; }
   .card-grid { grid-template-columns: 1fr; }
-  .hooks-layout { grid-template-columns: 1fr; }
   .section-header { flex-direction: column; align-items: flex-start; }
   .section-header > div:last-child { display: flex; flex-wrap: wrap; gap: 6px; }
   .hook-command-row { flex-wrap: wrap; }
@@ -1272,7 +1269,6 @@ hr.divider { border: none; border-top: 1px solid var(--border); margin: 4px 0; }
 @media (max-width: 960px) {
   #main { padding: 20px 18px; }
   .card-grid { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
-  .hooks-layout { grid-template-columns: 1fr; gap: 16px; }
 }
 
 

@@ -542,9 +542,12 @@ function setHookRuntime(ext) {
 async function api(method, path, body) {
   const opts = { method, headers: { 'Content-Type': 'application/json' } };
   if (body !== undefined) opts.body = JSON.stringify(body);
-  const res  = await fetch('/api' + path, opts);
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || res.statusText);
+  const res = await fetch('/api' + path, opts);
+  // Parse defensively: a 500 with a non-JSON body must surface the real
+  // status, not a JSON parse error (Kidlin: report the actual problem).
+  let data = null;
+  try { data = await res.json(); } catch {}
+  if (!res.ok) throw new Error(data?.error || `${res.status} ${res.statusText || 'request failed'}`);
   return data;
 }
 
@@ -666,14 +669,14 @@ async function loadOverview() {
   try {
     const d = await api('GET', '/overview');
     document.getElementById('overview-path').textContent = d.path;
-    const pluginsSub = d.plugins > 0 ? `${d.enabledPlugins} enabled · ${d.plugins - d.enabledPlugins} disabled` : 'none installed';
+    const pluginsSub = (d.plugins || 0) > 0 ? `${d.enabledPlugins || 0} enabled · ${(d.plugins || 0) - (d.enabledPlugins || 0)} disabled` : 'none installed';
     document.getElementById('stat-grid').innerHTML = [
-      { v: d.skills,           label: 'Skills',       s: 'skills',   icon: '🧩' },
+      { v: d.skills || 0,      label: 'Skills',       s: 'skills',   icon: '🧩' },
       { v: d.agents || 0,      label: 'Agents',       s: 'agents',   icon: '🤖' },
-      { v: d.hookEvents,       label: 'Hook Events',  s: 'hooks',    icon: '🔗' },
-      { v: d.plugins,          label: 'Plugins',      s: 'plugins',  icon: '🧱', sub: pluginsSub },
+      { v: d.hookEvents || 0,  label: 'Hook Events',  s: 'hooks',    icon: '🔗' },
+      { v: d.plugins || 0,     label: 'Plugins',      s: 'plugins',  icon: '🧱', sub: pluginsSub },
       { v: d.mcpServers || 0,  label: 'MCP Servers',  s: 'plugins',  icon: '🔌' },
-      { v: d.commands,         label: 'Commands',     s: 'commands', icon: '⌨️' },
+      { v: d.commands || 0,    label: 'Commands',     s: 'commands', icon: '⌨️' },
     ].map(({ v, label, s, icon, sub }) =>
       `<div class="stat-card" onclick="navigate('${s}')">
         <div class="stat-value">${v}</div>
@@ -1195,12 +1198,16 @@ async function renderCustomEvents() {
       </div>`).join('');
     el.querySelectorAll('[data-ce-edit]').forEach(b => b.onclick = () => openFileEditor('hooks/' + b.dataset.ceEdit));
     el.querySelectorAll('[data-ce-del]').forEach(b => b.onclick = async () => {
-      if (!confirm(`Delete custom event "${b.dataset.ceDel}"? This removes its script and unwires it.`)) return;
+      if (!await confirmDlg('Delete Custom Event', `Delete "${b.dataset.ceDel}"? This removes its script and unwires it from settings.json.`)) return;
       try { await api('DELETE', '/custom-events/' + encodeURIComponent(b.dataset.ceDel)); toast('Custom event removed'); loadHooks(); }
       catch (e) { toast(e.message, 'error'); }
     });
     return events.length;
-  } catch { el.innerHTML = ''; return 0; }
+  } catch (e) {
+    // Kidlin: an error must never look like an empty list
+    el.innerHTML = `<div style="font-size:12px;color:var(--danger);padding:4px 0 8px">Couldn't load custom events (${escHtml(e.message)}) — <button class="link-btn" onclick="loadHooks()">retry</button></div>`;
+    return 0;
+  }
 }
 
 let _ceProvider = 'claude-cli';
@@ -1940,7 +1947,7 @@ function renderSkillSourcesList() {
   });
   list.querySelectorAll('[data-src-del]').forEach(btn => {
     btn.onclick = async () => {
-      if (!confirm('Remove this skill source?')) return;
+      if (!await confirmDlg('Remove Source', 'Remove this skill source? Skills already installed from it stay in place.')) return;
       try { await api('DELETE', `/skill-store/sources/${btn.dataset.srcDel}`); _skillStoreData = []; loadSkillStoreSources(); loadSkillStore(); }
       catch (e) { toast(e.message, 'error'); }
     };
@@ -2112,7 +2119,7 @@ function renderAgentSourcesList(sources) {
   });
   el.querySelectorAll('[data-src-del]').forEach(btn => {
     btn.onclick = async () => {
-      if (!confirm('Remove this source?')) return;
+      if (!await confirmDlg('Remove Source', 'Remove this source? Items already installed from it stay in place.')) return;
       try { await api('DELETE', `/agent-store/sources/${btn.dataset.srcDel}`); _agentStoreData = []; loadAgentStoreSources(); loadAgentStore(); }
       catch (e) { toast(e.message, 'error'); }
     };
@@ -2246,7 +2253,7 @@ function renderHookSourcesList(sources) {
   });
   el.querySelectorAll('[data-src-del]').forEach(btn => {
     btn.onclick = async () => {
-      if (!confirm('Remove this source?')) return;
+      if (!await confirmDlg('Remove Source', 'Remove this source? Items already installed from it stay in place.')) return;
       try { await api('DELETE', `/hook-store/sources/${btn.dataset.srcDel}`); _hookStoreData = []; loadHookStoreSources(); loadHookStore(); }
       catch (e) { toast(e.message, 'error'); }
     };
@@ -2991,7 +2998,7 @@ async function loadPlugins() {
     tbody.querySelectorAll(`[${attr}]`).forEach(btn => {
       btn.onclick = async () => {
         const id = btn.getAttribute(attr);
-        if (confirmMsg && !confirm(confirmMsg.replace('{id}', id))) return;
+        if (confirmMsg && !await confirmDlg('Confirm', confirmMsg.replace('{id}', id))) return;
         const orig = btn.textContent;
         btn.disabled = true; btn.textContent = '…';
         try {
@@ -3009,7 +3016,7 @@ async function loadPlugins() {
   tbody.querySelectorAll('[data-mcp-remove]').forEach(btn => {
     btn.onclick = async () => {
       const id = btn.dataset.mcpRemove;
-      if (!confirm(`Remove MCP server "${id}"?`)) return;
+      if (!await confirmDlg('Remove MCP Server', `Remove "${id}" from its config file? Restart Claude Code to deactivate it.`)) return;
       try {
         const r = await api('DELETE', '/plugins/' + encodeURIComponent(id) + '/mcp');
         toast(`Removed "${id}" from ${r.configFile || 'config'} — restart Claude Code to deactivate`);
@@ -3219,7 +3226,7 @@ async function renderSourcesPanel() {
   });
   list.querySelectorAll('[data-src-del]').forEach(btn => {
     btn.onclick = async () => {
-      if (!confirm('Remove this marketplace source?')) return;
+      if (!await confirmDlg('Remove Source', 'Remove this marketplace source? Plugins already installed from it stay in place.')) return;
       await api('DELETE', '/marketplace/sources/' + encodeURIComponent(btn.dataset.srcDel));
       toast('Source removed');
       renderSourcesPanel();
@@ -3564,7 +3571,7 @@ function kbRenderCurrent(parsed, rawContent) {
         <button class="btn btn-primary btn-sm" id="kbConvertBtn" style="margin-left:6px">Replace with a valid starter</button>
       </div>`;
     document.getElementById('kbConvertBtn').onclick = async () => {
-      if (!confirm('Replace the current keybindings.json with the official-format starter? The old content will be lost.')) return;
+      if (!await confirmDlg('Replace keybindings.json', 'Replace it with the official-format starter? The old content will be lost.')) return;
       await api('PUT', '/keybindings', { content: JSON.stringify(KB_SCAFFOLD, null, 2) });
       toast('keybindings.json converted to the official format');
       loadKeybindings();
@@ -4598,6 +4605,12 @@ async function setRunProvider(p) {
   document.getElementById('runPermWarning').style.display = p === 'openrouter' ? 'none' : '';
   document.getElementById('runManualWrap').style.display = p === 'openrouter' ? 'none' : '';
   document.getElementById('runOrConfig').style.display = p === 'openrouter' ? '' : 'none';
+  // DOET: the button's look should signal its consequence — a full-permissions
+  // run is a red action; a text-only OpenRouter run is a normal one.
+  const startBtn = document.getElementById('runModalStart');
+  startBtn.classList.toggle('btn-danger', p !== 'openrouter');
+  startBtn.classList.toggle('btn-primary', p === 'openrouter');
+  startBtn.textContent = p === 'openrouter' ? '▶ Start Text-Only Run' : '▶ Run With All Permissions';
   const cwdGroup = document.getElementById('runCwd').closest('.form-group');
   if (cwdGroup) cwdGroup.style.opacity = p === 'openrouter' ? '.5' : '1';
   // Load saved key status + model so the user knows exactly what will be used
@@ -4797,7 +4810,9 @@ async function loadRefChips(containerId, selectedSet) {
         else { selectedSet.add(id); chip.classList.add('active'); }
       };
     });
-  } catch { el.innerHTML = ''; }
+  } catch (e) {
+    el.innerHTML = `<span style="font-size:11px;color:var(--danger)">Couldn't load installed MCPs/plugins (${escHtml(e.message)}) — you can still proceed without references.</span>`;
+  }
 }
 
 // ===== COMPOSE WORKFLOW FROM INSTALLED RESOURCES =====
@@ -6084,7 +6099,8 @@ const WF_TYPE_CLASS = { hook: 'badge-accent', skill: 'badge-success', agent: 'ba
 
 async function loadWorkflows() {
   let myWorkflows = [];
-  try { myWorkflows = await api('GET', '/workflows'); } catch {}
+  try { myWorkflows = await api('GET', '/workflows'); }
+  catch (e) { toast('Could not load your workflows: ' + e.message, 'error'); }
   const section = document.getElementById('section-workflows');
   const myWfHtml = myWorkflows.length ? `
     <div style="font-size:12px;color:var(--text-dim);margin-bottom:14px;font-weight:600;text-transform:uppercase;letter-spacing:.5px">Your Workflows</div>
@@ -6182,7 +6198,7 @@ async function loadWorkflows() {
   });
   section.querySelectorAll('[data-mywf-del]').forEach(btn => {
     btn.onclick = async () => {
-      if (!confirm(`Remove workflow "${btn.dataset.mywfDel}" from this list? The installed skills/agents/hooks stay in place.`)) return;
+      if (!await confirmDlg('Remove Workflow', `Remove "${btn.dataset.mywfDel}" from this list? The installed skills/agents/hooks stay in place.`)) return;
       try { await api('DELETE', '/workflows/' + encodeURIComponent(btn.dataset.mywfDel)); toast('Workflow removed'); loadWorkflows(); }
       catch (e) { toast(e.message, 'error'); }
     };
