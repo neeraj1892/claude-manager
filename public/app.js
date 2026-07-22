@@ -640,12 +640,23 @@ function setFolderBanner(valid, path) {
   }
 }
 
+// Which shell should generated commands target? Defaults to the server's OS,
+// user can flip it (persisted).
+let _shellPref = localStorage.getItem('cm-shell') || null;
+
 async function checkFolderValid() {
   try {
     const s = await api('GET', '/status');
     setFolderBanner(s.valid, s.path);
+    if (!_shellPref) _shellPref = s.platform === 'win32' ? 'powershell' : 'bash';
     return s.valid;
   } catch { return false; }
+}
+
+function setShellPref(shell) {
+  _shellPref = shell;
+  localStorage.setItem('cm-shell', shell);
+  document.querySelectorAll('[data-shell-pick]').forEach(b => b.classList.toggle('active', b.dataset.shellPick === shell));
 }
 document.getElementById('folderInput').addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('folderConfirm').click(); });
 document.getElementById('refreshBtn').onclick = () => { loadSection(currentSection); loadBadges(); toast('Refreshed', 'info'); };
@@ -2817,14 +2828,11 @@ function buildWorkflowOneShotPrompt(wf) {
 }
 
 function buildWorkflowOneShotCommand(wf) {
-  return [
-    `cd /path/to/your/project && claude -p \\`,
-    `  --dangerously-skip-permissions \\`,
-    `  --output-format stream-json --verbose \\`,
-    `  > ${(wf.name || 'workflow')}-run.jsonl << 'PROMPT'`,
-    buildWorkflowOneShotPrompt(wf),
-    'PROMPT',
-  ].join('\n');
+  const promptLines = [buildWorkflowOneShotPrompt(wf)];
+  const file = `${(wf.name || 'workflow')}-run.jsonl`;
+  return _shellPref === 'powershell'
+    ? buildPsCommand(promptLines, 'C:\\path\\to\\your\\project', file, '')
+    : buildBashCommand(promptLines, '/path/to/your/project', file, '');
 }
 
 // End-to-end invocation instructions for a workflow, from its components
@@ -4825,13 +4833,18 @@ function buildManualRunCmd() {
   }
   if (expected) promptLines.push('', 'EXPECTED OUTPUT — the run is complete only when this is delivered exactly:', expected);
 
-  // Paths: quote safely, but keep a leading ~ expandable
+  return _shellPref === 'powershell'
+    ? buildPsCommand(promptLines, cwd, file, model)
+    : buildBashCommand(promptLines, cwd, file, model);
+}
+
+// bash/zsh: heredoc prompt, backslash continuations, ~ kept expandable
+function buildBashCommand(promptLines, cwd, file, model) {
   const qp = (s) => {
     s = String(s);
-    if (/^~($|\/)/.test(s)) return s.replace(/([ '"$`\\])/g, '\\$1'); // ~ must stay unquoted to expand
+    if (/^~($|\/)/.test(s)) return s.replace(/([ '"$`\\])/g, '\\$1');
     return `'` + s.replace(/'/g, `'\\''`) + `'`;
   };
-
   return [
     `cd ${qp(cwd)} && claude -p \\`,
     `  --dangerously-skip-permissions \\`,
@@ -4843,6 +4856,26 @@ function buildManualRunCmd() {
   ].join('\n');
 }
 
+// Windows PowerShell: single-quoted here-string (no interpolation), backtick
+// continuations, Out-File for reliable UTF-8 output
+function buildPsCommand(promptLines, cwd, file, model) {
+  const qps = (s) => `'` + String(s).replace(/'/g, `''`) + `'`;
+  // ~ paths: PowerShell won't expand ~ inside quotes — use $HOME in double quotes
+  const qpsPath = (s) => /^~($|[\/\\])/.test(String(s))
+    ? `"$HOME${String(s).slice(1).replace(/"/g, '`"')}"`
+    : qps(s);
+  const bt = '`';
+  return [
+    `cd ${qpsPath(cwd)}`,
+    `@'`,
+    ...promptLines,
+    `'@ | claude -p ${bt}`,
+    `  --dangerously-skip-permissions ${bt}`,
+    `  --output-format stream-json --verbose${model ? ` ${bt}\n  --model ${model}` : ''} |`,
+    `  Out-File -Encoding utf8 ${qpsPath(file)}`,
+  ].join('\n');
+}
+
 function refreshManualRunCmd() {
   const el = document.getElementById('runManualCmd');
   if (el) el.value = buildManualRunCmd();
@@ -4851,6 +4884,9 @@ document.getElementById('runTask').addEventListener('input', refreshManualRunCmd
 document.getElementById('runExpected').addEventListener('input', refreshManualRunCmd);
 document.getElementById('runCwd').addEventListener('input', refreshManualRunCmd);
 document.getElementById('runCliModel').addEventListener('change', refreshManualRunCmd);
+document.querySelectorAll('[data-shell-pick]').forEach(b => {
+  b.onclick = () => { setShellPref(b.dataset.shellPick); refreshManualRunCmd(); };
+});
 document.getElementById('runOutputFile').addEventListener('input', refreshManualRunCmd);
 document.getElementById('runManualCopy').onclick = () => {
   navigator.clipboard.writeText(document.getElementById('runManualCmd').value)
@@ -4870,6 +4906,7 @@ async function openRunModal(kind, name, defaultTask) {
   document.getElementById('runModalSetup').style.display = '';
   document.getElementById('runModalLive').style.display = 'none';
   document.getElementById('runInfoBox').style.display = 'none';
+  setShellPref(_shellPref || 'bash'); // sync the shell toggle chips
   refreshManualRunCmd();
   document.getElementById('runModal').classList.add('open');
   setTimeout(() => document.getElementById('runTask').focus(), 60);

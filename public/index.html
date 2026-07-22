@@ -1323,6 +1323,11 @@
       <!-- Prefer to run it yourself? Copy the exact command -->
       <details id="runManualWrap" style="margin-bottom:14px">
         <summary style="cursor:pointer;font-size:12px;color:var(--text-muted)">💻 Run it yourself instead — copy the terminal command</summary>
+        <div style="display:flex;gap:6px;margin-top:8px;align-items:center">
+          <span style="font-size:11px;color:var(--text-dim)">Shell:</span>
+          <button class="gen-type-tab" data-shell-pick="bash" type="button" style="padding:3px 10px;font-size:11px">bash / zsh (macOS · Linux)</button>
+          <button class="gen-type-tab" data-shell-pick="powershell" type="button" style="padding:3px 10px;font-size:11px">PowerShell (Windows)</button>
+        </div>
         <div style="display:flex;gap:6px;margin-top:8px;align-items:flex-start">
           <textarea id="runManualCmd" readonly rows="9" style="flex:1;font-family:monospace;font-size:11px;background:var(--surface2)"></textarea>
           <button class="btn btn-secondary btn-sm" id="runManualCopy" type="button">Copy</button>

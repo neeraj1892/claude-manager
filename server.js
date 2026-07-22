@@ -723,7 +723,7 @@ app.put('/api/files', (req, res) => {
 // --- API: Folder ---
 
 app.get('/api/status', (req, res) => {
-  res.json({ valid: existsSync(claudeDir), path: claudeDir });
+  res.json({ valid: existsSync(claudeDir), path: claudeDir, platform: process.platform });
 });
 
 app.post('/api/folder', (req, res) => {
@@ -2895,16 +2895,28 @@ app.get('/api/run/info', (req, res) => {
     description: typeof meta.description === 'string' ? meta.description : '',
     argumentHint,
     whenToUse: typeof meta.when_to_use === 'string' ? meta.when_to_use : '',
-    // Copy-paste command to run the exact same one-shot manually in a terminal.
-    // Heredoc form: no prompt-quoting pitfalls, cwd explicit, one flag per line.
-    manualCommand: [
-      `cd /path/to/your/project && claude -p \\`,
-      `  --dangerously-skip-permissions \\`,
-      `  --output-format stream-json --verbose \\`,
-      `  > run-output.jsonl << 'PROMPT'`,
-      examplePrompt,
-      'PROMPT',
-    ].join('\n'),
+    // Copy-paste command to run the exact same one-shot manually — in the
+    // right SHELL. bash/zsh gets a heredoc; Windows PowerShell gets a
+    // here-string (no heredocs, backtick continuations, Out-File for UTF-8).
+    // ?shell=powershell|bash overrides; default follows this machine's OS.
+    manualCommand: (req.query.shell === 'powershell' || (req.query.shell !== 'bash' && process.platform === 'win32'))
+      ? [
+          `cd 'C:\\path\\to\\your\\project'`,
+          `@'`,
+          examplePrompt,
+          `'@ | claude -p \``,
+          `  --dangerously-skip-permissions \``,
+          `  --output-format stream-json --verbose |`,
+          `  Out-File -Encoding utf8 'run-output.jsonl'`,
+        ].join('\n')
+      : [
+          `cd /path/to/your/project && claude -p \\`,
+          `  --dangerously-skip-permissions \\`,
+          `  --output-format stream-json --verbose \\`,
+          `  > run-output.jsonl << 'PROMPT'`,
+          examplePrompt,
+          'PROMPT',
+        ].join('\n'),
   });
 });
 

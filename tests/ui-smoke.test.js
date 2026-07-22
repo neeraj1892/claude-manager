@@ -26,6 +26,7 @@ before(async (t) => {
     sent.push({ path, method: opts?.method || 'GET', body: opts?.body ? JSON.parse(opts.body) : undefined });
     return { ok: true, status: 200, json: async () => {
       if (path.includes('/ai/generate-skill')) return { content: '#!/usr/bin/env node\n// ok', type: 'hook' };
+      if (path.includes('/status')) return { valid: true, path: '/x', platform: 'darwin' };
       if (path.includes('/keybindings')) return { content: '', exists: false };
       if (path.includes('/ai-config')) return { claudeCli: true, hasOpenRouterKey: true, openRouterModel: 'anthropic/claude-sonnet-4-5' };
       if (path.includes('/hook-events')) return { builtin: [], dynamic: [], all: [] };
@@ -84,6 +85,23 @@ test('overview: concept map + getting-started render, nav order Build-first', as
   const order = [...w.document.querySelectorAll('#sidebar .nav-item')].map(b => b.dataset.section);
   assert.deepEqual(order, ['overview', 'skills', 'agents', 'hooks', 'commands', 'workflows', 'plugins', 'claude-md', 'settings', 'keybindings', 'examples'],
     'workflows follows commands; keybindings and examples in separate groups');
+});
+
+test('manual command respects the shell toggle (bash heredoc vs PowerShell here-string)', async (t) => {
+  if (skipIfNoDom(t)) return;
+  await w.eval("openRunModal('skill','demo-skill')");
+  await new Promise(r => setTimeout(r, 80));
+  w.eval("setShellPref('bash'); refreshManualRunCmd()");
+  let cmd = w.document.getElementById('runManualCmd').value;
+  assert.ok(cmd.includes("<< 'PROMPT'"), 'bash uses heredoc');
+  assert.ok(cmd.startsWith('cd '), 'bash includes cd');
+  w.eval("setShellPref('powershell'); refreshManualRunCmd()");
+  cmd = w.document.getElementById('runManualCmd').value;
+  assert.ok(cmd.includes("@'"), 'PowerShell here-string');
+  assert.ok(cmd.includes('Out-File -Encoding utf8'), 'PowerShell-safe redirect');
+  assert.ok(cmd.includes('$HOME'), '~ paths translated for PowerShell');
+  assert.ok(!cmd.includes('<< '), 'no heredoc leaks into PS');
+  w.eval("setShellPref('bash')");
 });
 
 test('workflow templates: Run disabled + Install shown until components exist', async (t) => {

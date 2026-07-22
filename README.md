@@ -41,7 +41,7 @@ Every skill, agent, command, and workflow has a **▶ Run** button:
 - Choose the working directory, the output `.jsonl` path, and an optional **expected output** — stated as a contract in the prompt ("the run is only complete when it delivers exactly this").
 - **Claude CLI provider**: full run via `claude -p --dangerously-skip-permissions --output-format stream-json` with an optional `--model` pin (sonnet/opus/haiku or a pinned version), streaming every event to your JSONL file with a live tail, stop button, and 15-minute timeout.
 - **OpenRouter provider**: text-only dry-run using your key and chosen model (no tool execution) — works even without Claude Code installed.
-- Prefer the terminal? The modal shows the exact copy-paste command.
+- Prefer the terminal? The modal shows the exact copy-paste command in your shell's dialect — bash/zsh heredoc or Windows PowerShell here-string (auto-detected from the server OS, toggleable).
 
 ## Setup
 
@@ -90,7 +90,7 @@ Any modal with a provider picker (Generate, Run, Compose) auto-detects: if the C
 npm test
 ```
 
-200 tests (Node's built-in `node --test`) covering every endpoint and scenario. Each test file boots an isolated server with its own temp `.claude` folder, temp `HOME`, isolated config, a local fixture marketplace/OpenRouter endpoint, and a fake `claude` CLI shim that records invocations — no network or real Claude Code install needed. See [`tests/README.md`](tests/README.md) for the full bug-fix history and scenario list.
+202 tests (Node's built-in `node --test`) covering every endpoint and scenario. Each test file boots an isolated server with its own temp `.claude` folder, temp `HOME`, isolated config, a local fixture marketplace/OpenRouter endpoint, and a fake `claude` CLI shim that records invocations — no network or real Claude Code install needed. See [`tests/README.md`](tests/README.md) for the full bug-fix history and scenario list.
 
 ## Security notes
 

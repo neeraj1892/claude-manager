@@ -50,6 +50,19 @@ test('run/info returns description, argument hint, and a copyable manual command
   assert.ok(data.manualCommand.includes('/my-skill'));
 });
 
+test('run/info ?shell=powershell returns a Windows-correct command', async () => {
+  const { data } = await s.api('GET', '/run/info?kind=skill&name=my-skill&shell=powershell');
+  const cmd = data.manualCommand;
+  assert.ok(cmd.includes("@'"), 'PowerShell here-string used');
+  assert.ok(cmd.includes('Out-File -Encoding utf8'), 'UTF-8 safe output redirection');
+  assert.ok(cmd.includes('`'), 'backtick line continuations');
+  assert.ok(!cmd.includes("<< 'PROMPT'"), 'no POSIX heredoc');
+  assert.ok(!/\\\n/.test(cmd), 'no backslash continuations');
+  // and bash stays bash when requested explicitly
+  const bash = await s.api('GET', '/run/info?kind=skill&name=my-skill&shell=bash');
+  assert.ok(bash.data.manualCommand.includes("<< 'PROMPT'"));
+});
+
 test('run/info for agents reads the agent definition', async () => {
   mkdirSync(join(s.claudeDir, 'agents'), { recursive: true });
   writeFileSync(join(s.claudeDir, 'agents', 'auditor.md'),
