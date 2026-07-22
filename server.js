@@ -19,12 +19,53 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // --- Config persistence ---
-const CONFIG_PATH = join(__dirname, 'claude-manager.config.json');
-function loadConfig() {
-  try { return JSON.parse(readFileSync(CONFIG_PATH, 'utf8')); } catch { return {}; }
+// GUARD RAIL: secrets (the OpenRouter API key) are NEVER written into the
+// repo directory. They live in ~/.claude-manager.secrets.json (chmod 600),
+// physically outside anything git could commit. claude-manager.config.json
+// stays in the repo (and gitignored) for non-secret preferences only.
+const CONFIG_PATH  = join(__dirname, 'claude-manager.config.json');
+const SECRETS_PATH = join(homedir(), '.claude-manager.secrets.json');
+const SECRET_KEYS  = ['openRouterKey'];
+
+function loadSecrets() {
+  try { return JSON.parse(readFileSync(SECRETS_PATH, 'utf8')); } catch { return {}; }
 }
+
+function saveSecrets(secrets) {
+  try {
+    writeFileSync(SECRETS_PATH, JSON.stringify(secrets, null, 2), { mode: 0o600 });
+  } catch {}
+}
+
+function loadConfig() {
+  let cfg = {};
+  try { cfg = JSON.parse(readFileSync(CONFIG_PATH, 'utf8')); } catch {}
+  // One-time migration: a key found inside the repo config is moved out
+  // immediately so it can never be committed.
+  const leaked = SECRET_KEYS.filter(k => cfg[k]);
+  if (leaked.length) {
+    const secrets = loadSecrets();
+    leaked.forEach(k => { if (!secrets[k]) secrets[k] = cfg[k]; delete cfg[k]; });
+    saveSecrets(secrets);
+    try { writeFileSync(CONFIG_PATH, JSON.stringify(cfg, null, 2)); } catch {}
+    console.warn('⚠ Moved API key out of claude-manager.config.json into ~/.claude-manager.secrets.json (never committed).');
+  }
+  return { ...cfg, ...loadSecrets() };
+}
+
 function saveConfig(data) {
-  try { writeFileSync(CONFIG_PATH, JSON.stringify(data, null, 2)); } catch {}
+  const plain = { ...data };
+  const secrets = loadSecrets();
+  let secretsTouched = false;
+  for (const k of SECRET_KEYS) {
+    if (k in plain) {
+      if (plain[k]) { secrets[k] = plain[k]; secretsTouched = true; }
+      else if (plain[k] === '') { delete secrets[k]; secretsTouched = true; } // explicit clear
+      delete plain[k]; // never in the repo file
+    }
+  }
+  if (secretsTouched) saveSecrets(secrets);
+  try { writeFileSync(CONFIG_PATH, JSON.stringify(plain, null, 2)); } catch {}
 }
 
 // Priority: CLI arg > CLAUDE_DIR env var > saved config > default ~/.claude
@@ -32,6 +73,13 @@ function expandHome(p) { return p.replace(/^~(?=[/\\]|$)/, homedir()); }
 const cfg = loadConfig();
 const initialPath = process.argv[2] || process.env.CLAUDE_DIR || cfg.claudeDir || join(homedir(), '.claude');
 let claudeDir = resolve(expandHome(initialPath));
+
+// GUARD RAIL: if the config file ever ends up tracked by git, say so loudly.
+try {
+  execSync('git ls-files --error-unmatch claude-manager.config.json', { cwd: __dirname, stdio: 'pipe', shell: true });
+  console.warn('\n⚠⚠ claude-manager.config.json is TRACKED BY GIT. It must never be committed.');
+  console.warn('   Fix: git rm --cached claude-manager.config.json  (and ensure it is in .gitignore)\n');
+} catch {}
 
 // --- Claude CLI availability check ---
 let claudeCliAvailable = false;
@@ -2886,13 +2934,13 @@ app.post('/api/run/start', (req, res) => {
       .then(text => {
         emit({ type: 'assistant', message: { content: [{ type: 'text', text }] } });
         emit({ type: 'result', subtype: 'success', result: text.slice(0, 2000) });
-        run.running = false; run.exitCode = 0; run.finishedAt = new Date().toISOString();
-        try { ws2.end(); } catch {}
+        run.exitCode = 0; run.finishedAt = new Date().toISOString();
+        try { ws2.end(() => { run.running = false; }); } catch { run.running = false; }
       })
       .catch(e => {
         emit({ type: 'result', subtype: 'error', error: e.message });
-        run.running = false; run.exitCode = 1; run.error = e.message; run.finishedAt = new Date().toISOString();
-        try { ws2.end(); } catch {}
+        run.exitCode = 1; run.error = e.message; run.finishedAt = new Date().toISOString();
+        try { ws2.end(() => { run.running = false; }); } catch { run.running = false; }
       });
     return res.json({ ok: true, id, file, provider: 'openrouter', prompt: run.prompt, note: 'Text-only run — no local tools are executed.' });
   }
@@ -2931,14 +2979,19 @@ app.post('/api/run/start', (req, res) => {
   });
   child.stderr.on('data', d => { run.stderr = (run.stderr + d.toString()).slice(-2000); });
   const killTimer = setTimeout(() => { try { child.kill('SIGTERM'); run.error = 'Timed out after 15 minutes'; } catch {} }, RUN_TIMEOUT_MS);
-  child.on('error', e => { run.running = false; run.error = e.message; clearTimeout(killTimer); try { ws.end(); } catch {} });
+  // NB: mark the run finished only AFTER the write stream has flushed to disk —
+  // otherwise a poller can read a truncated JSONL file.
+  child.on('error', e => {
+    run.error = e.message;
+    clearTimeout(killTimer);
+    try { ws.end(() => { run.running = false; }); } catch { run.running = false; }
+  });
   child.on('close', code => {
     if (partial.trim()) { run.lines++; run.tail.push(partial.slice(0, 400)); }
-    run.running = false;
     run.exitCode = code;
     run.finishedAt = new Date().toISOString();
     clearTimeout(killTimer);
-    try { ws.end(); } catch {}
+    try { ws.end(() => { run.running = false; }); } catch { run.running = false; }
   });
   try { child.stdin.write(prompt); child.stdin.end(); } catch {}
 

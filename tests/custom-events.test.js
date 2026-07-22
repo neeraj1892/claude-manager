@@ -112,6 +112,17 @@ test('delete: unwires settings.json, removes script and registry entry', async (
   assert.equal((await s.api('DELETE', '/custom-events/GitPushDetected')).status, 404);
 });
 
+test('status reflects reality: deleting the script by hand shows fileExists=false', async () => {
+  await s.api('POST', '/custom-events/install', { ...def, name: 'StatusCheck', filename: 'status-check.mjs' });
+  const { unlinkSync } = require('fs');
+  unlinkSync(join(s.claudeDir, 'hooks', 'status-check.mjs'));
+  const { data } = await s.api('GET', '/custom-events');
+  const ev = data.find(e => e.name === 'StatusCheck');
+  assert.equal(ev.fileExists, false, 'missing script surfaced, not hidden');
+  assert.equal(ev.wired, true, 'wiring still recorded');
+  await s.api('DELETE', '/custom-events/StatusCheck');
+});
+
 test('delete preserves other hooks sharing the same event/matcher', async () => {
   // Wire an unrelated hook on the same event+matcher, then install/delete a custom event
   await s.api('PUT', '/hooks/settings', { hooks: { PreToolUse: [{ matcher: 'Bash', hooks: [{ type: 'command', command: 'node keep-me.mjs' }] }] } });

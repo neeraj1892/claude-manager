@@ -143,6 +143,15 @@ test('direct-install validation: missing serverId / missing command+url -> 400',
   assert.equal((await s.api('POST', '/marketplace/direct-install', { serverId: 'x' })).status, 400);
 });
 
+test('direct-install persists environment variables', async () => {
+  await s.api('POST', '/marketplace/direct-install', {
+    serverId: 'env-server', type: 'stdio', command: 'npx', args: ['-y', 'x'],
+    env: { API_TOKEN: 'tok-123', REGION: 'eu' },
+  });
+  const settings = JSON.parse(readFileSync(join(s.claudeDir, 'settings.json'), 'utf8'));
+  assert.deepEqual(settings.mcpServers['env-server'].env, { API_TOKEN: 'tok-123', REGION: 'eu' });
+});
+
 test('direct-install sse type with url', async () => {
   const { status } = await s.api('POST', '/marketplace/direct-install', { serverId: 'remote', type: 'sse', url: 'https://example.com/sse' });
   assert.equal(status, 200);

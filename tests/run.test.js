@@ -49,6 +49,17 @@ test('run/info returns description, argument hint, and a copyable manual command
   assert.ok(data.manualCommand.includes('/my-skill'));
 });
 
+test('run/info for agents reads the agent definition', async () => {
+  mkdirSync(join(s.claudeDir, 'agents'), { recursive: true });
+  writeFileSync(join(s.claudeDir, 'agents', 'auditor.md'),
+    '---\nname: auditor\ndescription: Audits code for security issues.\n---\nBody');
+  const { status, data } = await s.api('GET', '/run/info?kind=agent&name=auditor');
+  assert.equal(status, 200);
+  assert.equal(data.exists, true);
+  assert.match(data.description, /Audits code/);
+  assert.ok(data.manualCommand.includes('agents'), 'manual command references the agent definition');
+});
+
 test('run/info for commands and missing artifacts', async () => {
   const cmd = await s.api('GET', '/run/info?kind=command&name=changelog');
   assert.equal(cmd.data.exists, true);

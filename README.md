@@ -64,7 +64,7 @@ CLAUDE_DIR=/path/to/.claude npm start # environment variable
 PORT=3001 npm start                   # different port
 ```
 
-The folder choice persists in `claude-manager.config.json` (also where your OpenRouter key is stored — this file is gitignored).
+The folder choice persists in `claude-manager.config.json` (gitignored). Your OpenRouter key is stored **outside the repo** in `~/.claude-manager.secrets.json` (chmod 600) so it can never be committed; keys found in older configs are migrated out automatically.
 
 ## Usage tour
 
@@ -87,7 +87,7 @@ Any modal with a provider picker (Generate, Run, Compose) auto-detects: if the C
 npm test
 ```
 
-177 tests (Node's built-in `node --test`) covering every endpoint and scenario. Each test file boots an isolated server with its own temp `.claude` folder, temp `HOME`, isolated config, a local fixture marketplace/OpenRouter endpoint, and a fake `claude` CLI shim that records invocations — no network or real Claude Code install needed. See [`tests/README.md`](tests/README.md) for the full bug-fix history and scenario list.
+188 tests (Node's built-in `node --test`) covering every endpoint and scenario. Each test file boots an isolated server with its own temp `.claude` folder, temp `HOME`, isolated config, a local fixture marketplace/OpenRouter endpoint, and a fake `claude` CLI shim that records invocations — no network or real Claude Code install needed. See [`tests/README.md`](tests/README.md) for the full bug-fix history and scenario list.
 
 ## Security notes
 

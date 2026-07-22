@@ -84,6 +84,14 @@ test('apply validation: bad payloads -> 400', async () => {
   assert.equal((await s.api('POST', '/updates/hook-events/apply', { events: ['bad name!'] })).status, 400);
 });
 
+test('hooks/wire accepts docs-discovered (dynamic) events too', async () => {
+  // WorkspaceChange was applied in the previous test — wiring to it must work
+  await s.api('POST', '/hooks/files', { name: 'ws-watch.mjs', content: '#!/usr/bin/env node\n// watch' });
+  const { status, data } = await s.api('POST', '/hooks/wire', { event: 'WorkspaceChange', filename: 'ws-watch.mjs' });
+  assert.equal(status, 200, JSON.stringify(data));
+  assert.equal(data.event, 'WorkspaceChange');
+});
+
 test('updates/cli runs `claude update` through the CLI', async () => {
   const { status, data } = await s.api('POST', '/updates/cli', {});
   assert.equal(status, 200, JSON.stringify(data));
