@@ -2849,16 +2849,21 @@ app.post('/api/hook-store/install', async (req, res) => {
 const _runs = {};
 const RUN_TIMEOUT_MS = 15 * 60 * 1000;
 
-function buildRunPrompt(kind, name, task) {
+function buildRunPrompt(kind, name, task, expectedOutput) {
   const t = (task || '').trim();
-  if (kind === 'skill' || kind === 'command') return (`/${name} ${t}`).trim();
+  // The user's output contract: what the run must deliver and in what form
+  const outSpec = (expectedOutput || '').trim()
+    ? `\n\nEXPECTED OUTPUT — the run is only complete when it delivers exactly this: ${(expectedOutput || '').trim()}`
+    : '';
+  if (kind === 'skill' || kind === 'command') return (`/${name} ${t}`).trim() + outSpec;
   if (kind === 'agent') {
     return `Read the agent definition at ${join(claudeDir, 'agents', name + '.md')} and act as that agent. `
          + `Follow its steps, tool constraints, and output contract exactly.`
-         + (t ? `\n\nTask: ${t}` : '\n\nTask: perform the agent\'s default responsibility on the current directory.');
+         + (t ? `\n\nTask: ${t}` : '\n\nTask: perform the agent\'s default responsibility on the current directory.')
+         + outSpec;
   }
   // workflow: free-form goal
-  return t || `Execute the "${name}" workflow on the current directory.`;
+  return (t || `Execute the "${name}" workflow on the current directory.`) + outSpec;
 }
 
 const RUN_KINDS = ['skill', 'agent', 'command', 'workflow'];
@@ -2894,7 +2899,7 @@ app.get('/api/run/info', (req, res) => {
 });
 
 app.post('/api/run/start', (req, res) => {
-  const { kind = 'skill', name, task = '', outputFile, cwd, provider = 'claude-cli' } = req.body;
+  const { kind = 'skill', name, task = '', outputFile, cwd, provider = 'claude-cli', expectedOutput = '' } = req.body;
   if (!name || !/^[a-zA-Z0-9 _-]+$/.test(name)) return res.status(400).json({ error: 'Invalid name' });
   if (!RUN_KINDS.includes(kind)) return res.status(400).json({ error: 'kind must be one of: ' + RUN_KINDS.join(', ') });
   if (!outputFile?.trim()) return res.status(400).json({ error: 'outputFile is required — where should the JSONL stream be written?' });
@@ -2919,7 +2924,8 @@ app.post('/api/run/start', (req, res) => {
     const model = req.body.model?.trim() || orCfg.openRouterModel || 'anthropic/claude-sonnet-4-5';
     const run = {
       id, kind, name, file, provider: 'openrouter', cwd: workDir,
-      prompt: (task || '').trim() || 'Perform your default responsibility.',
+      prompt: ((task || '').trim() || 'Perform your default responsibility.')
+        + ((expectedOutput || '').trim() ? `\n\nEXPECTED OUTPUT — deliver exactly this: ${expectedOutput.trim()}` : ''),
       startedAt: new Date().toISOString(),
       running: true, exitCode: null, error: null, lines: 0, bytes: 0, tail: [], stderr: '',
     };
@@ -2960,7 +2966,7 @@ app.post('/api/run/start', (req, res) => {
   const cliModel = (req.body.model || '').trim();
   if (cliModel && !/^[a-zA-Z0-9.:_-]+$/.test(cliModel)) return res.status(400).json({ error: 'Invalid model name' });
 
-  const prompt = buildRunPrompt(kind, name, task);
+  const prompt = buildRunPrompt(kind, name, task, expectedOutput);
   const cmd = 'claude -p --dangerously-skip-permissions --output-format stream-json --verbose'
     + (cliModel ? ` --model ${cliModel}` : '');
 

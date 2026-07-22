@@ -4803,11 +4803,13 @@ document.getElementById('runProvOr').onclick  = () => setRunProvider('openrouter
 function buildManualRunCmd() {
   const { kind, name } = _runModal;
   const task = document.getElementById('runTask').value.trim();
+  const expected = document.getElementById('runExpected')?.value.trim() || '';
   const file = document.getElementById('runOutputFile').value.trim() || 'run-output.jsonl';
   const model = document.getElementById('runCliModel')?.value || '';
-  const prompt = (kind === 'skill' || kind === 'command') ? `/${name} ${task}`.trim()
+  let prompt = (kind === 'skill' || kind === 'command') ? `/${name} ${task}`.trim()
     : kind === 'agent' ? `Act as the "${name}" agent defined in ~/.claude/agents/${name}.md.${task ? ' Task: ' + task : ''}`
     : (task || `Execute the "${name}" workflow.`);
+  if (expected) prompt += ` EXPECTED OUTPUT: ${expected}`;
   const q = s => `'` + String(s).replace(/'/g, `'\\''`) + `'`;
   return `claude -p ${q(prompt)} --dangerously-skip-permissions --output-format stream-json --verbose${model ? ' --model ' + model : ''} > ${q(file)}`;
 }
@@ -4817,6 +4819,7 @@ function refreshManualRunCmd() {
   if (el) el.value = buildManualRunCmd();
 }
 document.getElementById('runTask').addEventListener('input', refreshManualRunCmd);
+document.getElementById('runExpected').addEventListener('input', refreshManualRunCmd);
 document.getElementById('runOutputFile').addEventListener('input', refreshManualRunCmd);
 document.getElementById('runManualCopy').onclick = () => {
   navigator.clipboard.writeText(document.getElementById('runManualCmd').value)
@@ -4828,6 +4831,7 @@ async function openRunModal(kind, name, defaultTask) {
   const label = kind === 'skill' ? 'Skill' : kind === 'agent' ? 'Agent' : kind === 'command' ? 'Command' : 'Workflow';
   document.getElementById('runModalTitle').textContent = `▶ Run ${label}: ${name}`;
   document.getElementById('runTask').value = defaultTask || '';
+  document.getElementById('runExpected').value = '';
   document.getElementById('runCliModel').value = '';
   document.getElementById('runCwd').value = '~';
   const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
@@ -4901,6 +4905,7 @@ document.getElementById('runModalStart').onclick = async () => {
       kind: _runModal.kind,
       name: _runModal.name,
       task: document.getElementById('runTask').value.trim(),
+      expectedOutput: document.getElementById('runExpected').value.trim(),
       cwd:  document.getElementById('runCwd').value.trim(),
       provider: _runModal.provider,
       outputFile,

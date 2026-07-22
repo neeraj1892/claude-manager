@@ -1300,6 +1300,12 @@
         <label class="form-label" id="runTaskLabel">Task / arguments <span style="font-weight:400;color:var(--text-dim)">(what should it work on?)</span></label>
         <textarea id="runTask" rows="3" placeholder="e.g. review the changes in src/auth/, or leave blank for the default behavior"></textarea>
       </div>
+
+      <div class="form-group">
+        <label class="form-label">Expected output <span style="font-weight:400;color:var(--text-dim)">(optional — what should the run deliver, and in what form?)</span></label>
+        <textarea id="runExpected" rows="2" placeholder="e.g. write findings to SECURITY-REPORT.md as a severity-ranked table · return a JSON array of {file, issue} · commit the fix with a conventional message"></textarea>
+        <div style="font-size:11px;color:var(--text-dim);margin-top:4px">Stated as a contract in the prompt — the run isn't done until it delivers exactly this.</div>
+      </div>
       <div class="form-group">
         <label class="form-label">Working directory</label>
         <input type="text" id="runCwd" placeholder="~">

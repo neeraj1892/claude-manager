@@ -131,6 +131,49 @@ test('workflow run: free-form goal prompt', async () => {
   assert.equal(s.readShimPrompt(), 'commit my changes properly');
 });
 
+test('expected output: stated as a contract in the prompt for every kind + provider', async () => {
+  // skill via CLI
+  let r = await s.api('POST', '/run/start', {
+    kind: 'skill', name: 'my-skill', task: 'review PR 7',
+    expectedOutput: 'a severity-ranked markdown table in REVIEW.md',
+    outputFile: join(s.home, 'runs', 'exp1.jsonl'), cwd: s.home,
+  });
+  await waitForRun(r.data.id);
+  let prompt = s.readShimPrompt();
+  assert.ok(prompt.startsWith('/my-skill review PR 7'), 'invocation intact');
+  assert.match(prompt, /EXPECTED OUTPUT — .*severity-ranked markdown table in REVIEW\.md/, 'contract appended');
+
+  // agent via CLI
+  r = await s.api('POST', '/run/start', {
+    kind: 'agent', name: 'reviewer', task: 'audit src', expectedOutput: 'JSON array of {file, issue}',
+    outputFile: join(s.home, 'runs', 'exp2.jsonl'), cwd: s.home,
+  });
+  await waitForRun(r.data.id);
+  assert.match(s.readShimPrompt(), /EXPECTED OUTPUT — .*JSON array/, 'agent runs carry the contract');
+
+  // OpenRouter text-only runs carry it too
+  await s.api('PUT', '/ai-config', { openRouterKey: 'sk-x' });
+  r = await s.api('POST', '/run/start', {
+    kind: 'skill', name: 'my-skill', task: 'summarize', provider: 'openrouter',
+    expectedOutput: 'three bullet points max',
+    outputFile: join(s.home, 'runs', 'exp3.jsonl'),
+  });
+  const done = await waitForRun(r.data.id);
+  const assistant = JSON.parse(readFileSync(done.file, 'utf8').trim().split('\n').find(l => l.includes('assistant')) || '{}');
+  assert.match(assistant.message.content[0].text, /EXPECTED OUTPUT — deliver exactly this: three bullet points max/, 'OR prompt includes the contract');
+
+  // Without the field, no contract text leaks into the prompt
+  r = await s.api('POST', '/run/start', {
+    kind: 'skill', name: 'my-skill', task: 'plain',
+    outputFile: join(s.home, 'runs', 'exp4.jsonl'), cwd: s.home,
+  });
+  await waitForRun(r.data.id);
+  assert.ok(!s.readShimPrompt().includes('EXPECTED OUTPUT'), 'optional means absent when empty');
+
+  // restore: later tests assert behavior without a saved key
+  await s.api('PUT', '/ai-config', { openRouterKey: '' });
+});
+
 test('CLI run: optional --model pin is passed through; default runs stay unpinned', async () => {
   const r = await s.api('POST', '/run/start', {
     kind: 'skill', name: 'my-skill', task: 'x', model: 'sonnet',
