@@ -735,6 +735,33 @@
           <button class="hook-runtime-btn" data-hg-lang="sh" onclick="setHookGenLang('sh',this)">🐚 Bash<span>Shell (.sh)</span></button>
         </div>
       </div>
+      <div class="form-group" style="margin-bottom:12px">
+        <label class="form-label">Generate with</label>
+        <div style="display:flex;gap:6px;margin-top:4px">
+          <button class="gen-type-tab active" id="hgProvCli" type="button">⚡ Claude CLI</button>
+          <button class="gen-type-tab" id="hgProvOr" type="button">🌐 OpenRouter</button>
+        </div>
+      </div>
+      <div id="hgOrConfig" style="display:none;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px;margin-bottom:12px">
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <div style="flex:1;min-width:180px">
+            <label class="form-label">OpenRouter API key <span id="hgOrKeyStatus" style="font-weight:400"></span></label>
+            <input type="password" id="hgOrKey" placeholder="sk-or-…" autocomplete="off">
+          </div>
+          <div style="flex:1;min-width:170px">
+            <label class="form-label">Model</label>
+            <select id="hgOrModel" style="width:100%">
+              <option value="anthropic/claude-sonnet-4-5">Claude Sonnet 4.5 (Recommended)</option>
+              <option value="anthropic/claude-opus-4-5">Claude Opus 4.5</option>
+              <option value="anthropic/claude-haiku-4-5">Claude Haiku 4.5 (Fast)</option>
+              <option value="openai/gpt-4o">GPT-4o</option>
+              <option value="openai/gpt-4o-mini">GPT-4o Mini</option>
+              <option value="google/gemini-2.5-flash">Gemini 2.5 Flash</option>
+              <option value="meta-llama/llama-3.3-70b-instruct">Llama 3.3 70B</option>
+            </select>
+          </div>
+        </div>
+      </div>
       <button class="btn btn-primary btn-sm" id="hookGenRunBtn" onclick="runHookGenInModal()">✨ Generate</button>
       <div id="hookGenPreview" style="display:none;margin-top:14px">
         <div style="font-size:12px;font-weight:600;color:var(--text-muted);margin-bottom:6px">Generated hook — review before saving:</div>

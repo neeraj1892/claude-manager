@@ -1577,7 +1577,13 @@ function toggleHookGenPanel() {
   const open = panel.style.display === 'none';
   panel.style.display = open ? '' : 'none';
   document.getElementById('hookGenToggle').textContent = open ? '✕ Close generator' : '✨ Generate with AI';
-  if (open) setTimeout(() => document.getElementById('hookGenDesc').focus(), 60);
+  if (open) {
+    setTimeout(() => document.getElementById('hookGenDesc').focus(), 60);
+    // Auto-select the best available provider (no CLI → OpenRouter, config shown)
+    api('GET', '/ai-config')
+      .then(cfg => setHookGenProvider(cfg.claudeCli ? 'claude-cli' : 'openrouter'))
+      .catch(() => setHookGenProvider('claude-cli'));
+  }
 }
 
 function setHookGenLang(ext, btn) {
@@ -1585,6 +1591,33 @@ function setHookGenLang(ext, btn) {
   document.querySelectorAll('[data-hg-lang]').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
 }
+
+let _hookGenProvider = 'claude-cli';
+async function setHookGenProvider(p) {
+  _hookGenProvider = p;
+  document.getElementById('hgProvCli').classList.toggle('active', p === 'claude-cli');
+  document.getElementById('hgProvOr').classList.toggle('active', p === 'openrouter');
+  document.getElementById('hgOrConfig').style.display = p === 'openrouter' ? '' : 'none';
+  if (p === 'openrouter') {
+    try {
+      const cfg = await api('GET', '/ai-config');
+      const status = document.getElementById('hgOrKeyStatus');
+      const keyInput = document.getElementById('hgOrKey');
+      if (cfg.hasOpenRouterKey) {
+        status.textContent = '✓ key saved — leave blank to use it';
+        status.style.color = 'var(--success)';
+        keyInput.placeholder = '•••••••• (saved)';
+      } else {
+        status.textContent = '— required';
+        status.style.color = 'var(--danger)';
+        keyInput.placeholder = 'sk-or-…';
+      }
+      document.getElementById('hgOrModel').value = cfg.openRouterModel || 'anthropic/claude-sonnet-4-5';
+    } catch {}
+  }
+}
+document.getElementById('hgProvCli').onclick = () => setHookGenProvider('claude-cli');
+document.getElementById('hgProvOr').onclick  = () => setHookGenProvider('openrouter');
 
 async function runHookGenInModal() {
   const desc = document.getElementById('hookGenDesc').value.trim();
@@ -1595,9 +1628,16 @@ async function runHookGenInModal() {
   document.getElementById('hookGenPreview').style.display = 'none';
   document.getElementById('hookGenError').style.display = 'none';
   try {
+    if (_hookGenProvider === 'openrouter') {
+      const inlineKey = document.getElementById('hgOrKey').value.trim();
+      const model = document.getElementById('hgOrModel').value;
+      await api('PUT', '/ai-config', inlineKey ? { openRouterKey: inlineKey, openRouterModel: model } : { openRouterModel: model });
+    }
     const res = await api('POST', '/ai/generate-skill', {
-      type: 'hook', name: 'generated-hook', description: desc,
-      hookLang: _hookGenLang, domain: '', perspective: ''
+      type: 'hook',
+      prompt: desc,                       // the endpoint's required field
+      provider: _hookGenProvider,
+      hookLang: '.' + _hookGenLang,       // server expects '.mjs' / '.py' / '.sh'
     });
     _hookGenContent = res.content || '';
     const ts = Date.now();
