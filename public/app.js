@@ -2605,6 +2605,46 @@ function renderWfReview(components) {
 }
 
 // Step 3 → Step 4: Install all built components
+// ===== WORKFLOW USAGE / INVOCATION HELPERS =====
+function buildWorkflowOneShotPrompt(wf) {
+  return `${wf.description || wf.title || wf.name}. Use these installed components where relevant: ${(wf.components || []).map(c => `${c.type} "${c.name}"`).join(', ')}.`;
+}
+
+function buildWorkflowOneShotCommand(wf) {
+  const q = s => `'` + String(s).replace(/'/g, `'\\''`) + `'`;
+  return `claude -p ${q(buildWorkflowOneShotPrompt(wf))} --dangerously-skip-permissions --output-format stream-json --verbose > ${(wf.name || 'workflow')}-run.jsonl`;
+}
+
+// End-to-end invocation instructions for a workflow, from its components
+function buildWorkflowUsageHtml(wf) {
+  const by = t => (wf.components || []).filter(c => c.type === t);
+  const rows = [];
+  by('command').forEach(c => rows.push(`<li>Type <code>/${escHtml(c.name)}</code> in any Claude Code session to trigger it manually. ${escHtml(c.description || '')}</li>`));
+  by('skill').forEach(c => rows.push(`<li>Invoke the <strong>${escHtml(c.name)}</strong> skill with <code>/${escHtml(c.name)}</code>, or just ask for it naturally — Claude auto-triggers it when your request matches its description.</li>`));
+  by('agent').forEach(c => rows.push(`<li>The <strong>${escHtml(c.name)}</strong> agent is delegated to automatically when relevant, or say <em>"use the ${escHtml(c.name)} agent"</em>.</li>`));
+  by('hook').forEach(c => rows.push(`<li>The <strong>${escHtml(c.name)}</strong> hook fires automatically${c.event ? ` on <code>${escHtml(c.event)}</code>${c.matcher ? ` (matcher <code>${escHtml(c.matcher)}</code>)` : ''}` : ' — wire it to an event in the Hooks section'} in every session. No action needed.</li>`));
+  const cmd = buildWorkflowOneShotCommand(wf);
+  return `
+    <div style="font-weight:700;margin:14px 0 8px">🚀 How to invoke this workflow end to end</div>
+    <ol class="wf-setup-steps" style="margin-bottom:12px">${rows.join('')}</ol>
+    <div style="font-weight:650;font-size:13px;margin-bottom:6px">⚡ Fully automated one-shot (bypasses ALL permission prompts)</div>
+    <div style="font-size:12px;color:var(--text-muted);margin-bottom:6px">
+      Run the whole workflow non-interactively — Claude executes every step, uses all tools without asking, and streams the full event log to a JSONL file.
+      Use the <strong>▶ Run</strong> button on the workflow card, or from a terminal in your project folder:
+    </div>
+    <div style="display:flex;gap:6px;align-items:flex-start">
+      <textarea readonly rows="3" class="wf-oneshot-cmd" style="flex:1;font-family:monospace;font-size:11px;background:var(--surface2)">${escHtml(cmd)}</textarea>
+      <button class="btn btn-secondary btn-sm" data-copy-oneshot="${escHtml(cmd)}">Copy</button>
+    </div>
+    <div style="font-size:11px;color:var(--warning);margin-top:6px">⚠ <code>--dangerously-skip-permissions</code> means no confirmation prompts — only run in a project you trust it with.</div>`;
+}
+
+function wireOneShotCopyButtons(container) {
+  container.querySelectorAll('[data-copy-oneshot]').forEach(b => {
+    b.onclick = () => navigator.clipboard.writeText(b.dataset.copyOneshot).then(() => toast('One-shot command copied'));
+  });
+}
+
 async function runWfInstall() {
   const components = _wfState.builtComponents;
   if (!components.length) { toast('Nothing to install', 'error'); return; }
@@ -2633,6 +2673,22 @@ async function runWfInstall() {
       if (comp.type === 'hook') body.name = comp.name + '.mjs';
       await api('POST', '/' + WF_INSTALL_API[comp.type], body);
       iconEl.textContent = '✅'; statEl.textContent = 'Saved'; statEl.style.color = 'var(--success)';
+      // Hooks must also be WIRED to their lifecycle event — a saved but unwired
+      // hook never fires.
+      if (comp.type === 'hook') {
+        if (comp.event) {
+          try {
+            await api('POST', '/hooks/wire', { event: comp.event, matcher: comp.matcher || '', filename: comp.name + '.mjs' });
+            statEl.textContent = `Saved · wired to ${comp.event}${comp.matcher ? ' (' + comp.matcher + ')' : ''}`;
+          } catch (e) {
+            statEl.textContent = 'Saved — wiring failed, wire manually in Hooks';
+            statEl.style.color = 'var(--warning)';
+          }
+        } else {
+          statEl.textContent = 'Saved — no event in plan, wire manually in Hooks';
+          statEl.style.color = 'var(--warning)';
+        }
+      }
       // "View" button opens the file in the editor overlay (z=230) WITHOUT closing wizard (z=210)
       viewBtn.style.display = '';
       const snapshot = { ...comp }; // capture for closure
@@ -2650,15 +2706,27 @@ async function runWfInstall() {
     }
   }
 
-  if (_wfState.plan?.setupGuide?.length) {
-    const guide = document.getElementById('wfSetupGuide');
-    guide.style.display = '';
-    guide.innerHTML = `
-      <div class="wf-setup-guide">
+  // Persist the workflow so it appears under "Your Workflows"
+  const plan = _wfState.plan || {};
+  const wfRecord = {
+    name: (plan.name || 'my-workflow').toLowerCase().replace(/[^a-z0-9-]+/g, '-'),
+    title: plan.title || plan.name || 'My Workflow',
+    description: plan.description || _wfState.goal || '',
+    components: components.map(c => ({ type: c.type, name: c.name, description: c.description, event: c.event, matcher: c.matcher })),
+    setupGuide: plan.setupGuide || [],
+  };
+  try { await api('POST', '/workflows', wfRecord); } catch (e) { toast('Workflow saved partially: ' + e.message, 'error'); }
+
+  const guide = document.getElementById('wfSetupGuide');
+  guide.style.display = '';
+  guide.innerHTML = `
+    <div class="wf-setup-guide">
+      ${plan.setupGuide?.length ? `
         <div style="font-weight:700;margin-bottom:8px">📋 Setup Guide</div>
-        <ol class="wf-setup-steps">${_wfState.plan.setupGuide.map(s => `<li>${escHtml(s)}</li>`).join('')}</ol>
-      </div>`;
-  }
+        <ol class="wf-setup-steps">${plan.setupGuide.map(s => `<li>${escHtml(s)}</li>`).join('')}</ol>` : ''}
+      ${buildWorkflowUsageHtml(wfRecord)}
+    </div>`;
+  wireOneShotCopyButtons(guide);
   document.getElementById('wfDoneBtn').style.display = '';
 }
 
@@ -3393,6 +3461,80 @@ window.navigate = navigate;
 
 // ===== EXAMPLES =====
 const EXAMPLES = [
+  // ──────────── CUSTOM EVENTS ────────────
+  {
+    id: 'hook-post-commit', type: 'hook-file', name: 'post-commit-detected.mjs', icon: '🧬',
+    title: 'PostCommit — a custom event, end to end',
+    hookEvent: 'PostToolUse', hookMatcher: 'Bash',
+    description: 'Claude Code has no PostCommit event — this derives one: a PostToolUse hook that fires only after a successful `git commit`, then logs the commit hash and message to ~/.claude/commits.jsonl. Shows the full custom-event pattern: detect one condition, exit fast otherwise, fail open.',
+    content: `#!/usr/bin/env node
+// ═══════════════════════════════════════════════════════════════
+// CUSTOM EVENT: PostCommit
+//
+// WHAT IT IS   Claude Code only fires built-in events (PreToolUse,
+//              PostToolUse, Stop…). "PostCommit" is a DERIVED event:
+//              this script attaches to PostToolUse (matcher: Bash) and
+//              fires ONLY when the Bash command was a successful
+//              \`git commit\`. Every other command exits instantly —
+//              as far as anyone can tell, the event simply didn't fire.
+//
+// USAGE        1. Save as ~/.claude/hooks/post-commit-detected.mjs
+//                 ("Use This" does this for you)
+//              2. Wire it in settings.json under PostToolUse with
+//                 matcher "Bash" (the wire dialog opens automatically):
+//                 { "PostToolUse": [{ "matcher": "Bash", "hooks":
+//                   [{ "type": "command",
+//                      "command": "node ~/.claude/hooks/post-commit-detected.mjs" }] }] }
+//              3. Done — every git commit Claude makes is now recorded
+//                 in ~/.claude/commits.jsonl (one JSON line per commit).
+//
+// WHY          An audit trail of every commit Claude creates, without
+//              asking Claude to remember anything. Swap the log action
+//              for a desktop notification, a Slack webhook, or a
+//              "redirect Claude to push" — the detection stays the same.
+// ═══════════════════════════════════════════════════════════════
+import { createInterface } from 'node:readline';
+import { appendFileSync } from 'node:fs';
+import { execSync } from 'node:child_process';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
+
+const rl = createInterface({ input: process.stdin, terminal: false });
+const lines = [];
+rl.on('line', l => lines.push(l));
+rl.on('close', () => {
+  try {
+    const input = JSON.parse(lines.join('\\n') || '{}');
+
+    // ── DETECTION: is this our event? ──
+    // Only Bash tool results…
+    if (input.tool_name !== 'Bash') process.exit(0);
+    const cmd = input.tool_input?.command || '';
+    // …that ran git commit…
+    if (!/\\bgit\\s+commit\\b/.test(cmd)) process.exit(0);
+    // …and succeeded (a failed commit is NOT a PostCommit event).
+    const out = String(input.tool_response?.stdout ?? input.tool_response ?? '');
+    if (/error|fatal:/i.test(out)) process.exit(0);
+
+    // ── THE EVENT FIRED: perform the action ──
+    let hash = '', message = '';
+    try {
+      hash    = execSync('git rev-parse --short HEAD', { timeout: 3000 }).toString().trim();
+      message = execSync('git log -1 --pretty=%s',     { timeout: 3000 }).toString().trim();
+    } catch {}
+    appendFileSync(join(homedir(), '.claude', 'commits.jsonl'), JSON.stringify({
+      event: 'PostCommit', at: new Date().toISOString(), hash, message, command: cmd.slice(0, 200),
+    }) + '\\n');
+
+    // Feedback-only output (never blocks anything)
+    process.stdout.write(JSON.stringify({ continue: true, reason: \`[PostCommit] recorded \${hash} — \${message}\` }));
+    process.exit(0);
+  } catch {
+    process.exit(0); // FAIL-OPEN: a broken audit log must never block Claude
+  }
+});
+`,
+  },
   // ──────────── SKILLS ────────────
   {
     id: 'skill-git-standup', type: 'skill', name: 'git-standup', icon: '📅',
@@ -5657,8 +5799,33 @@ const WORKFLOWS = [
 
 const WF_TYPE_CLASS = { hook: 'badge-accent', skill: 'badge-success', agent: 'badge-warning', command: 'badge-muted' };
 
-function loadWorkflows() {
+async function loadWorkflows() {
+  let myWorkflows = [];
+  try { myWorkflows = await api('GET', '/workflows'); } catch {}
   const section = document.getElementById('section-workflows');
+  const myWfHtml = myWorkflows.length ? `
+    <div style="font-size:12px;color:var(--text-dim);margin-bottom:14px;font-weight:600;text-transform:uppercase;letter-spacing:.5px">Your Workflows</div>
+    <div class="workflow-grid" style="margin-bottom:22px">
+      ${myWorkflows.map(w => `
+        <div class="workflow-card">
+          <div class="workflow-card-top">
+            <span class="workflow-card-icon">🛠️</span>
+            <div>
+              <div class="workflow-card-name">${escHtml(w.title || w.name)}</div>
+              <div class="workflow-card-tagline">${escHtml((w.components || []).map(c => c.type).join(' · '))} · created ${fmtDate(w.createdAt)}</div>
+            </div>
+          </div>
+          <div class="workflow-card-desc">${escHtml(w.description || '')}</div>
+          <div class="workflow-card-badges" style="display:flex;align-items:center;justify-content:space-between;gap:6px">
+            <div>${(w.components || []).map(c => `<span class="badge ${WF_TYPE_CLASS[c.type] || 'badge-muted'}">${escHtml(c.type)}</span>`).join('')}</div>
+            <div style="display:flex;gap:5px;flex-shrink:0">
+              <button class="btn btn-run btn-sm" data-mywf-run="${escHtml(w.name)}" title="One-shot fully automated run — bypasses all permission prompts">▶ Run</button>
+              <button class="btn btn-secondary btn-sm" data-mywf-usage="${escHtml(w.name)}" title="How to invoke this workflow end to end">📖 Usage</button>
+              <button class="btn btn-danger btn-sm" data-mywf-del="${escHtml(w.name)}" title="Remove from this list (does not delete the installed components)">✕</button>
+            </div>
+          </div>
+        </div>`).join('')}
+    </div>` : '';
   section.innerHTML = `
     <div class="section-header">
       <div>
@@ -5682,6 +5849,7 @@ function loadWorkflows() {
          <strong>Use pre-built:</strong> click a template below → review components → Install All.</p>
     </div>
 
+    ${myWfHtml}
     <div style="font-size:12px;color:var(--text-dim);margin-bottom:14px;font-weight:600;text-transform:uppercase;letter-spacing:.5px">Pre-built Templates</div>
     <div class="workflow-grid">
       ${WORKFLOWS.map(w => `
@@ -5707,6 +5875,34 @@ function loadWorkflows() {
 
   document.getElementById('createWorkflowBtn').onclick = openWorkflowWizard;
   document.getElementById('composeWorkflowBtn').onclick = openComposeModal;
+  // Your Workflows actions
+  section.querySelectorAll('[data-mywf-run]').forEach(btn => {
+    btn.onclick = () => {
+      const w = myWorkflows.find(x => x.name === btn.dataset.mywfRun);
+      if (w) openRunModal('workflow', w.title || w.name, buildWorkflowOneShotPrompt(w));
+    };
+  });
+  section.querySelectorAll('[data-mywf-usage]').forEach(btn => {
+    btn.onclick = () => {
+      const w = myWorkflows.find(x => x.name === btn.dataset.mywfUsage);
+      if (!w) return;
+      document.getElementById('wfUsageTitle').textContent = '📖 ' + (w.title || w.name) + ' — how to use it';
+      const body = document.getElementById('wfUsageBody');
+      body.innerHTML = `
+        <div style="font-size:13px;color:var(--text-muted);margin-bottom:4px">${escHtml(w.description || '')}</div>
+        ${w.setupGuide?.length ? `<div style="font-weight:700;margin:12px 0 6px">📋 Setup</div><ol class="wf-setup-steps">${w.setupGuide.map(x => `<li>${escHtml(x)}</li>`).join('')}</ol>` : ''}
+        ${buildWorkflowUsageHtml(w)}`;
+      wireOneShotCopyButtons(body);
+      document.getElementById('wfUsageModal').classList.add('open');
+    };
+  });
+  section.querySelectorAll('[data-mywf-del]').forEach(btn => {
+    btn.onclick = async () => {
+      if (!confirm(`Remove workflow "${btn.dataset.mywfDel}" from this list? The installed skills/agents/hooks stay in place.`)) return;
+      try { await api('DELETE', '/workflows/' + encodeURIComponent(btn.dataset.mywfDel)); toast('Workflow removed'); loadWorkflows(); }
+      catch (e) { toast(e.message, 'error'); }
+    };
+  });
   section.querySelectorAll('[data-wf-run]').forEach(btn => {
     btn.onclick = (e) => {
       e.stopPropagation();

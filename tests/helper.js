@@ -37,7 +37,7 @@ if [ "$1" = "-p" ]; then
       printf '{"feasible":"yes","summary":"Canned compose analysis.","components":[{"type":"skill","name":"compose-skill","role":"does the work"},{"type":"skill","name":"ghost-skill","role":"does not exist"}],"missing":[{"type":"hook","name":"guard-hook","description":"blocks bad commands"}],"setupGuide":["wire guard-hook to PreToolUse"]}'
       ;;
     *"workflow architect"*)
-      printf '{"name":"test-workflow","title":"Test Workflow","description":"d","setupGuide":["a"],"components":[{"type":"skill","name":"comp-one","description":"d"}]}'
+      printf '{"name":"test-workflow","title":"Test Workflow","description":"d","setupGuide":["a"],"components":[{"type":"skill","name":"comp-one","description":"d"},{"type":"hook","name":"guard-hook","description":"guards","event":"PreToolUse","matcher":"Bash"}]}'
       ;;
     *"FENCED_TEST"*)
       printf -- '\`\`\`markdown\\n---\\nname: fenced-skill\\ndescription: was wrapped in a code fence\\n---\\n\\n# Fenced\\n\`\`\`'

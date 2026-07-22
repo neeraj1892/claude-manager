@@ -1683,12 +1683,13 @@ Shape:
   "description": "One sentence — what this workflow accomplishes and who benefits.",
   "setupGuide": ["plain text step 1", "plain text step 2", "plain text step 3"],
   "components": [
-    { "type": "skill"|"agent"|"hook"|"command", "name": "kebab-case-name", "description": "One sentence — this component's specific role." }
+    { "type": "skill"|"agent"|"hook"|"command", "name": "kebab-case-name", "description": "One sentence — this component's specific role.", "event": "hooks ONLY: the lifecycle event to wire to (PreToolUse, PostToolUse, PostToolUseFailure, Stop, SessionStart, SessionEnd, UserPromptSubmit, SubagentStop, PreCompact, Notification...)", "matcher": "hooks ONLY: tool-name regex for PreToolUse/PostToolUse (e.g. \\"Bash\\", \\"Write|Edit\\"), empty string otherwise" }
   ]
 }
 
 RULES (no exceptions):
-- components array: ONLY name/type/description — NO content field
+- components array: ONLY name/type/description (+ event/matcher for hooks) — NO content field
+- EVERY hook component MUST include "event" so it can be wired automatically
 - Pareto: pick the vital-few components that deliver 80% of the value
 - Occam: if 2 components cover the goal, don't add a third
 - Miller: max 6 components total
@@ -3131,6 +3132,36 @@ app.post('/api/ai/create-custom-event', async (req, res) => {
 
 const HOOK_RUNNERS = { '.mjs': 'node', '.js': 'node', '.py': 'python3', '.sh': 'bash' };
 
+// Append a hook command to settings.json for an event/matcher, reusing groups.
+function wireHookCommand(event, matcher, filename) {
+  const settingsPath = join(claudeDir, 'settings.json');
+  const settings = readJson(settingsPath);
+  settings.hooks = settings.hooks || {};
+  const groups = settings.hooks[event] = settings.hooks[event] || [];
+  const runner = HOOK_RUNNERS[(filename.match(/\.[^.]+$/) || ['.mjs'])[0]] || 'node';
+  const command = `${runner} "${join(claudeDir, 'hooks', filename)}"`;
+  let group = groups.find(g => (g.matcher || '') === (matcher || ''));
+  if (!group) { group = { ...(matcher ? { matcher } : {}), hooks: [] }; groups.push(group); }
+  group.hooks = group.hooks || [];
+  if (!group.hooks.some(h => h.command === command)) group.hooks.push({ type: 'command', command });
+  writeJson(settingsPath, settings);
+  return command;
+}
+
+// Wire an existing hooks/<filename> to a lifecycle event
+app.post('/api/hooks/wire', (req, res) => {
+  const { event, matcher = '', filename } = req.body;
+  const cfg = loadConfig();
+  const validEvents = [...BUILTIN_HOOK_EVENTS, ...(cfg.dynamicHookEvents || [])];
+  if (!validEvents.includes(event)) return res.status(400).json({ error: `Unknown hook event "${event}"` });
+  if (!filename || !/^[a-zA-Z0-9_.-]+$/.test(filename)) return res.status(400).json({ error: 'Invalid filename' });
+  if (!existsSync(join(claudeDir, 'hooks', filename))) return res.status(404).json({ error: `hooks/${filename} does not exist — create the file first` });
+  try {
+    const command = wireHookCommand(event, matcher, filename);
+    res.json({ ok: true, event, matcher, command });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.get('/api/custom-events', (req, res) => {
   const cfg = loadConfig();
   const settings = readJson(join(claudeDir, 'settings.json'));
@@ -3158,17 +3189,7 @@ app.post('/api/custom-events/install', (req, res) => {
     atomicWrite(filePath, hookScript);
     if (process.platform !== 'win32') { try { execSync(`chmod +x "${filePath.replace(/"/g, '\\"')}"`, { shell: true }); } catch {} }
     // 2) wire it to the underlying event in settings.json
-    const settingsPath = join(claudeDir, 'settings.json');
-    const settings = readJson(settingsPath);
-    settings.hooks = settings.hooks || {};
-    const groups = settings.hooks[underlyingEvent] = settings.hooks[underlyingEvent] || [];
-    const runner = HOOK_RUNNERS[filename.match(/\.[^.]+$/)[0]] || 'node';
-    const command = `${runner} "${filePath}"`;
-    let group = groups.find(g => (g.matcher || '') === (matcher || ''));
-    if (!group) { group = { ...(matcher ? { matcher } : {}), hooks: [] }; groups.push(group); }
-    group.hooks = group.hooks || [];
-    if (!group.hooks.some(h => h.command === command)) group.hooks.push({ type: 'command', command });
-    writeJson(settingsPath, settings);
+    wireHookCommand(underlyingEvent, matcher, filename);
     // 3) record in the registry
     cfg.customEvents = cfg.customEvents || [];
     cfg.customEvents.push({ name, description, underlyingEvent, matcher, filename, how, createdAt: new Date().toISOString() });
@@ -3199,6 +3220,40 @@ app.delete('/api/custom-events/:name', (req, res) => {
     saveConfig(cfg);
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// --- API: Saved Workflows (registry for AI-created workflows) ---
+
+app.get('/api/workflows', (req, res) => {
+  res.json(loadConfig().workflows || []);
+});
+
+app.post('/api/workflows', (req, res) => {
+  const { name, title = '', description = '', components = [], setupGuide = [] } = req.body;
+  if (!name || !/^[a-z0-9][a-z0-9-]{1,60}$/.test(name)) return res.status(400).json({ error: 'name must be kebab-case' });
+  if (!Array.isArray(components) || !components.length) return res.status(400).json({ error: 'components array is required' });
+  const cfg = loadConfig();
+  cfg.workflows = (cfg.workflows || []).filter(w => w.name !== name); // upsert
+  cfg.workflows.push({
+    name, title: title || name, description,
+    components: components.map(c => ({
+      type: c.type, name: c.name, description: c.description || '',
+      ...(c.event ? { event: c.event } : {}), ...(c.matcher ? { matcher: c.matcher } : {}),
+    })),
+    setupGuide,
+    createdAt: new Date().toISOString(),
+  });
+  saveConfig(cfg);
+  res.status(201).json({ ok: true, name });
+});
+
+app.delete('/api/workflows/:name', (req, res) => {
+  const cfg = loadConfig();
+  const before = (cfg.workflows || []).length;
+  cfg.workflows = (cfg.workflows || []).filter(w => w.name !== req.params.name);
+  if (cfg.workflows.length === before) return res.status(404).json({ error: 'Workflow not found' });
+  saveConfig(cfg);
+  res.json({ ok: true });
 });
 
 // --- Start ---

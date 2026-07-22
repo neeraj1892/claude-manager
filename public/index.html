@@ -740,6 +740,20 @@
   </div>
 </div>
 
+<!-- ===== WORKFLOW USAGE MODAL ===== -->
+<div class="overlay" id="wfUsageModal">
+  <div class="skill-gen-dialog" style="max-width:680px">
+    <div class="skill-gen-header">
+      <div><h3 style="margin:0" id="wfUsageTitle">📖 Workflow usage</h3></div>
+      <button class="icon-btn" onclick="document.getElementById('wfUsageModal').classList.remove('open')">✕</button>
+    </div>
+    <div id="wfUsageBody" style="max-height:480px;overflow-y:auto;font-size:13px;line-height:1.6"></div>
+    <div class="folder-dialog-actions" style="margin-top:12px">
+      <button class="btn btn-primary" onclick="document.getElementById('wfUsageModal').classList.remove('open')">Close</button>
+    </div>
+  </div>
+</div>
+
 <!-- ===== CUSTOM EVENT CREATOR MODAL ===== -->
 <div class="overlay" id="customEventModal">
   <div class="skill-gen-dialog" style="max-width:680px">
@@ -759,6 +773,7 @@
           <span class="matcher-chip" data-cewhen="whenever Claude runs a git push command" data-ceact="block it until the test suite has been run this session">Git push guard</span>
           <span class="matcher-chip" data-cewhen="whenever Claude writes or edits a file larger than 1 MB" data-ceact="log the path and size to ~/claude-large-writes.log and warn">Large file write</span>
           <span class="matcher-chip" data-cewhen="whenever a Bash command exits with a non-zero status" data-ceact="log the command and error output to ~/.claude/failures.jsonl">Command failed</span>
+          <span class="matcher-chip" data-cewhen="whenever Claude successfully runs a git commit command" data-ceact="log the commit hash and message to ~/.claude/commits.jsonl and print a one-line confirmation">PostCommit</span>
           <span class="matcher-chip" data-cewhen="whenever Claude edits a database migration file" data-ceact="block it and ask the user to review migrations manually">Migration guard</span>
         </div>
       </div>

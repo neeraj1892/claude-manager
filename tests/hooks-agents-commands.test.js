@@ -85,6 +85,59 @@ test('hooks: delete file; missing -> 404', async () => {
   assert.equal((await s.api('DELETE', '/hooks/files/guard.sh')).status, 404);
 });
 
+// ── Hook wiring endpoint (used by workflow installs) ──
+
+test('hooks/wire: wires an existing hook file to an event, reusing matcher groups', async () => {
+  await s.api('POST', '/hooks/files', { name: 'wf-guard.mjs', content: '#!/usr/bin/env node\n// guard' });
+  const r = await s.api('POST', '/hooks/wire', { event: 'PreToolUse', matcher: 'Bash', filename: 'wf-guard.mjs' });
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+  assert.match(r.data.command, /wf-guard\.mjs/);
+  const settings = JSON.parse(readFileSync(join(s.claudeDir, 'settings.json'), 'utf8'));
+  const group = settings.hooks.PreToolUse.find(g => g.matcher === 'Bash');
+  assert.ok(group.hooks.some(h => h.command.includes('wf-guard.mjs')));
+  // Idempotent — wiring again doesn't duplicate
+  await s.api('POST', '/hooks/wire', { event: 'PreToolUse', matcher: 'Bash', filename: 'wf-guard.mjs' });
+  const settings2 = JSON.parse(readFileSync(join(s.claudeDir, 'settings.json'), 'utf8'));
+  const cmds = settings2.hooks.PreToolUse.find(g => g.matcher === 'Bash').hooks.filter(h => h.command.includes('wf-guard.mjs'));
+  assert.equal(cmds.length, 1, 'no duplicate wiring');
+});
+
+test('hooks/wire validation: unknown event -> 400, missing file -> 404', async () => {
+  assert.equal((await s.api('POST', '/hooks/wire', { event: 'FakeEvent', filename: 'wf-guard.mjs' })).status, 400);
+  assert.equal((await s.api('POST', '/hooks/wire', { event: 'PreToolUse', filename: 'ghost.mjs' })).status, 404);
+  assert.equal((await s.api('POST', '/hooks/wire', { event: 'PreToolUse', filename: '../evil.mjs' })).status, 400);
+});
+
+// ── Saved workflows registry ──
+
+test('workflows: save, list, upsert, delete', async () => {
+  const wf = {
+    name: 'review-pipeline', title: 'Review Pipeline', description: 'Reviews code end to end.',
+    components: [
+      { type: 'skill', name: 'pr-review', description: 'reviews' },
+      { type: 'hook', name: 'wf-guard', description: 'guards', event: 'PreToolUse', matcher: 'Bash' },
+    ],
+    setupGuide: ['step one'],
+  };
+  assert.equal((await s.api('POST', '/workflows', wf)).status, 201);
+  let list = await s.api('GET', '/workflows');
+  const saved = list.data.find(w => w.name === 'review-pipeline');
+  assert.ok(saved, 'workflow persisted');
+  assert.equal(saved.components[1].event, 'PreToolUse', 'hook wiring info preserved');
+  assert.ok(saved.createdAt);
+
+  // Upsert replaces, doesn't duplicate
+  await s.api('POST', '/workflows', { ...wf, description: 'v2' });
+  list = await s.api('GET', '/workflows');
+  assert.equal(list.data.filter(w => w.name === 'review-pipeline').length, 1);
+  assert.equal(list.data.find(w => w.name === 'review-pipeline').description, 'v2');
+
+  assert.equal((await s.api('DELETE', '/workflows/review-pipeline')).status, 200);
+  assert.equal((await s.api('DELETE', '/workflows/review-pipeline')).status, 404);
+  assert.equal((await s.api('POST', '/workflows', { name: 'Bad Name!', components: [{}] })).status, 400);
+  assert.equal((await s.api('POST', '/workflows', { name: 'ok-name', components: [] })).status, 400);
+});
+
 // ── Agents ──
 
 test('agents: CRUD lifecycle', async () => {

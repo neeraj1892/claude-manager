@@ -122,11 +122,17 @@ test('improve-skill returns improved content via CLI', async () => {
   assert.ok(data.content.length > 0);
 });
 
-test('generate-workflow-plan returns parsed JSON plan', async () => {
+test('generate-workflow-plan returns parsed JSON plan with hook wiring info', async () => {
   const { status, data } = await s.api('POST', '/ai/generate-workflow-plan', { goal: 'automate PR reviews', provider: 'claude-cli' });
   assert.equal(status, 200, JSON.stringify(data));
   assert.equal(data.name, 'test-workflow');
-  assert.ok(Array.isArray(data.components) && data.components.length === 1);
+  assert.ok(Array.isArray(data.components) && data.components.length >= 1);
+  const hook = data.components.find(c => c.type === 'hook');
+  assert.ok(hook, 'plan includes a hook component');
+  assert.equal(hook.event, 'PreToolUse', 'hook carries its wiring event');
+  assert.equal(hook.matcher, 'Bash');
+  // The plan prompt itself demands event/matcher for hooks
+  assert.ok(s.readShimPrompt().includes('EVERY hook component MUST include "event"'));
 });
 
 test('generate-workflow-plan requires goal', async () => {
