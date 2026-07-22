@@ -2842,7 +2842,8 @@ function buildWorkflowUsageHtml(wf) {
       <textarea readonly rows="3" class="wf-oneshot-cmd" style="flex:1;font-family:monospace;font-size:11px;background:var(--surface2)">${escHtml(cmd)}</textarea>
       <button class="btn btn-secondary btn-sm" data-copy-oneshot="${escHtml(cmd)}">Copy</button>
     </div>
-    <div style="font-size:11px;color:var(--warning);margin-top:6px">⚠ <code>--dangerously-skip-permissions</code> means no confirmation prompts — only run in a project you trust it with.</div>`;
+    <div style="font-size:11px;color:var(--warning);margin-top:6px">⚠ <code>--dangerously-skip-permissions</code> means no confirmation prompts — only run in a project you trust it with.</div>
+    <div style="font-size:11px;color:var(--text-dim);margin-top:4px">💡 Add <code>--model sonnet|opus|haiku</code> to pin a model for the run.</div>`;
 }
 
 function wireOneShotCopyButtons(container) {
@@ -4768,6 +4769,7 @@ async function setRunProvider(p) {
   document.getElementById('runPermWarning').style.display = p === 'openrouter' ? 'none' : '';
   document.getElementById('runManualWrap').style.display = p === 'openrouter' ? 'none' : '';
   document.getElementById('runOrConfig').style.display = p === 'openrouter' ? '' : 'none';
+  document.getElementById('runCliModelWrap').style.display = p === 'openrouter' ? 'none' : '';
   // DOET: the button's look should signal its consequence — a full-permissions
   // run is a red action; a text-only OpenRouter run is a normal one.
   const startBtn = document.getElementById('runModalStart');
@@ -4802,11 +4804,12 @@ function buildManualRunCmd() {
   const { kind, name } = _runModal;
   const task = document.getElementById('runTask').value.trim();
   const file = document.getElementById('runOutputFile').value.trim() || 'run-output.jsonl';
+  const model = document.getElementById('runCliModel')?.value || '';
   const prompt = (kind === 'skill' || kind === 'command') ? `/${name} ${task}`.trim()
     : kind === 'agent' ? `Act as the "${name}" agent defined in ~/.claude/agents/${name}.md.${task ? ' Task: ' + task : ''}`
     : (task || `Execute the "${name}" workflow.`);
   const q = s => `'` + String(s).replace(/'/g, `'\\''`) + `'`;
-  return `claude -p ${q(prompt)} --dangerously-skip-permissions --output-format stream-json --verbose > ${q(file)}`;
+  return `claude -p ${q(prompt)} --dangerously-skip-permissions --output-format stream-json --verbose${model ? ' --model ' + model : ''} > ${q(file)}`;
 }
 
 function refreshManualRunCmd() {
@@ -4825,6 +4828,7 @@ async function openRunModal(kind, name, defaultTask) {
   const label = kind === 'skill' ? 'Skill' : kind === 'agent' ? 'Agent' : kind === 'command' ? 'Command' : 'Workflow';
   document.getElementById('runModalTitle').textContent = `▶ Run ${label}: ${name}`;
   document.getElementById('runTask').value = defaultTask || '';
+  document.getElementById('runCliModel').value = '';
   document.getElementById('runCwd').value = '~';
   const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
   document.getElementById('runOutputFile').value = `~/claude-runs/${name.toLowerCase().replace(/[^a-z0-9-]+/g, '-')}-${stamp}.jsonl`;
@@ -4891,7 +4895,9 @@ document.getElementById('runModalStart').onclick = async () => {
       if (inlineKey) await api('PUT', '/ai-config', { openRouterKey: inlineKey, openRouterModel: model });
     }
     const r = await api('POST', '/run/start', {
-      ...(_runModal.provider === 'openrouter' ? { model: document.getElementById('runOrModel').value } : {}),
+      ...(_runModal.provider === 'openrouter'
+        ? { model: document.getElementById('runOrModel').value }
+        : (document.getElementById('runCliModel').value ? { model: document.getElementById('runCliModel').value } : {})),
       kind: _runModal.kind,
       name: _runModal.name,
       task: document.getElementById('runTask').value.trim(),

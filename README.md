@@ -39,7 +39,7 @@ Claude Manager puts all of it in one place: browse it, edit it, understand it (w
 Every skill, agent, command, and workflow has a **▶ Run** button:
 - Shows what the artifact does and what arguments it accepts (from its frontmatter).
 - Choose the working directory and the output `.jsonl` path.
-- **Claude CLI provider**: full run via `claude -p --dangerously-skip-permissions --output-format stream-json`, streaming every event to your JSONL file with a live tail, stop button, and 15-minute timeout.
+- **Claude CLI provider**: full run via `claude -p --dangerously-skip-permissions --output-format stream-json` with an optional `--model` pin (sonnet/opus/haiku or a pinned version), streaming every event to your JSONL file with a live tail, stop button, and 15-minute timeout.
 - **OpenRouter provider**: text-only dry-run using your key and chosen model (no tool execution) — works even without Claude Code installed.
 - Prefer the terminal? The modal shows the exact copy-paste command.
 
@@ -90,7 +90,7 @@ Any modal with a provider picker (Generate, Run, Compose) auto-detects: if the C
 npm test
 ```
 
-198 tests (Node's built-in `node --test`) covering every endpoint and scenario. Each test file boots an isolated server with its own temp `.claude` folder, temp `HOME`, isolated config, a local fixture marketplace/OpenRouter endpoint, and a fake `claude` CLI shim that records invocations — no network or real Claude Code install needed. See [`tests/README.md`](tests/README.md) for the full bug-fix history and scenario list.
+199 tests (Node's built-in `node --test`) covering every endpoint and scenario. Each test file boots an isolated server with its own temp `.claude` folder, temp `HOME`, isolated config, a local fixture marketplace/OpenRouter endpoint, and a fake `claude` CLI shim that records invocations — no network or real Claude Code install needed. See [`tests/README.md`](tests/README.md) for the full bug-fix history and scenario list.
 
 ## Security notes
 

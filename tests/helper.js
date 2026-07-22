@@ -18,6 +18,7 @@ if [ "$1" = "-p" ]; then
   ARGS="$*"
   PROMPT=$(cat)
   printf '%s' "$PROMPT" > "$LOG.prompt"
+  printf '%s' "$ARGS" > "$LOG.args"
   case "$ARGS" in
     *stream-json*)
       printf '{"type":"system","subtype":"init"}\n'
@@ -124,6 +125,7 @@ async function startServer(port, { seedSkillCreator = false, env: extraEnv = {} 
     },
     readShimLog: () => existsSync(shimLog) ? readFileSync(shimLog, 'utf8') : '',
     readShimPrompt: () => existsSync(shimLog + '.prompt') ? readFileSync(shimLog + '.prompt', 'utf8') : '',
+    readShimArgs: () => existsSync(shimLog + '.args') ? readFileSync(shimLog + '.args', 'utf8') : '',
     stop: () => {
       child.kill();
       try { rmSync(root, { recursive: true, force: true }); } catch {}

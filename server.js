@@ -2956,8 +2956,13 @@ app.post('/api/run/start', (req, res) => {
   // ── Claude CLI provider: full run with all permissions ──
   if (!claudeCliAvailable) return res.status(400).json({ error: 'Claude CLI not found. Install Claude Code, or switch the provider to OpenRouter for a text-only run.' });
 
+  // Optional model pin (e.g. "sonnet", "opus", "haiku", or a full model string)
+  const cliModel = (req.body.model || '').trim();
+  if (cliModel && !/^[a-zA-Z0-9.:_-]+$/.test(cliModel)) return res.status(400).json({ error: 'Invalid model name' });
+
   const prompt = buildRunPrompt(kind, name, task);
-  const cmd = 'claude -p --dangerously-skip-permissions --output-format stream-json --verbose';
+  const cmd = 'claude -p --dangerously-skip-permissions --output-format stream-json --verbose'
+    + (cliModel ? ` --model ${cliModel}` : '');
 
   let ws;
   try { ws = createWriteStream(file, { flags: 'a' }); } catch (e) { return res.status(400).json({ error: 'Cannot write output file: ' + e.message }); }
@@ -2965,6 +2970,7 @@ app.post('/api/run/start', (req, res) => {
   const child = spawn(cmd, { shell: true, cwd: workDir });
   const run = {
     id, kind, name, file, prompt, cwd: workDir,
+    ...(cliModel ? { model: cliModel } : {}),
     startedAt: new Date().toISOString(),
     running: true, exitCode: null, error: null,
     lines: 0, bytes: 0, tail: [], stderr: '',

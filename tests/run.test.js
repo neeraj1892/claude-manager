@@ -131,6 +131,30 @@ test('workflow run: free-form goal prompt', async () => {
   assert.equal(s.readShimPrompt(), 'commit my changes properly');
 });
 
+test('CLI run: optional --model pin is passed through; default runs stay unpinned', async () => {
+  const r = await s.api('POST', '/run/start', {
+    kind: 'skill', name: 'my-skill', task: 'x', model: 'sonnet',
+    outputFile: join(s.home, 'runs', 'model-pin.jsonl'), cwd: s.home,
+  });
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+  const done = await waitForRun(r.data.id);
+  assert.equal(done.model, 'sonnet', 'run record carries the model');
+  assert.ok(s.readShimArgs().includes('--model sonnet'), 'claude invoked with --model: ' + s.readShimArgs());
+
+  const r2 = await s.api('POST', '/run/start', {
+    kind: 'skill', name: 'my-skill', task: 'y',
+    outputFile: join(s.home, 'runs', 'no-pin.jsonl'), cwd: s.home,
+  });
+  await waitForRun(r2.data.id);
+  assert.ok(!s.readShimArgs().includes('--model'), 'no --model without a pin');
+
+  const bad = await s.api('POST', '/run/start', {
+    kind: 'skill', name: 'my-skill', model: 'evil; rm -rf /',
+    outputFile: join(s.home, 'runs', 'bad-model.jsonl'), cwd: s.home,
+  });
+  assert.equal(bad.status, 400, 'model name sanitized');
+});
+
 test('command run: invoked as slash command', async () => {
   const r = await s.api('POST', '/run/start', {
     kind: 'command', name: 'changelog', task: 'v1.2.0', outputFile: join(s.home, 'runs', 'cmd.jsonl'), cwd: s.home,
