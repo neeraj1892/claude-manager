@@ -113,6 +113,19 @@ test('cards: primary actions visible, secondary behind a ⋯ menu; subheads mark
   assert.ok(w.document.querySelectorAll('.subhead').length >= 2, 'subsection headers present');
 });
 
+test('lists render as one container with hairline rows + icon actions', async (t) => {
+  if (skipIfNoDom(t)) return;
+  // hook files list uses the unified .list component with icon-only actions
+  w.eval(`renderHookFiles([{ name: 'a.mjs', size: '1 KB', modified: new Date().toISOString(), content: '' },
+                           { name: 'b.py',  size: '2 KB', modified: new Date().toISOString(), content: '' }])`);
+  const list = w.document.querySelector('#hook-files-list .list');
+  assert.ok(list, 'single .list container (not stacked cards)');
+  assert.equal(list.querySelectorAll('.list-row').length, 2);
+  const acts = list.querySelectorAll('.icon-act');
+  assert.equal(acts.length, 6, 'three icon actions per row');
+  acts.forEach(a => assert.ok(a.title, 'every icon action has a tooltip: ' + a.textContent));
+});
+
 test('keybindings + hooks subtabs render (regression)', async (t) => {
   if (skipIfNoDom(t)) return;
   await w.eval('loadKeybindings()');

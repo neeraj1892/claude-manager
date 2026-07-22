@@ -1188,23 +1188,22 @@ async function renderCustomEvents() {
       el.innerHTML = '<div style="font-size:12px;color:var(--text-dim);padding:4px 0 8px">No custom events yet — create one to turn a condition into a named, reusable trigger.</div>';
       return 0;
     }
-    el.innerHTML = events.map(ev => `
-      <div class="card" style="margin-bottom:8px;display:flex;align-items:center;gap:12px;padding:12px 14px;border-left:3px solid var(--c-hook)">
-        <span style="font-size:16px">🧬</span>
-        <div style="flex:1;min-width:0">
-          <div style="font-weight:650;font-size:13px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+    el.innerHTML = `<div class="list">${events.map(ev => `
+      <div class="list-row">
+        <span style="font-size:15px">🧬</span>
+        <div class="list-main">
+          <div class="list-title" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;white-space:normal">
             ${escHtml(ev.name)}
             <span class="badge badge-muted" style="font-size:10px">on ${escHtml(ev.underlyingEvent)}${ev.matcher ? ' · ' + escHtml(ev.matcher) : ''}</span>
             ${ev.wired && ev.fileExists
               ? '<span class="badge badge-success" style="font-size:10px">✓ active</span>'
               : `<span class="badge badge-warning" style="font-size:10px">⚠ ${!ev.fileExists ? 'script missing' : 'not wired'}</span>`}
           </div>
-          <div style="font-size:12px;color:var(--text-muted)">${escHtml(ev.description || '')}</div>
-          ${ev.how ? `<div style="font-size:11px;color:var(--text-dim);margin-top:2px">${escHtml(ev.how)}</div>` : ''}
+          <div class="list-sub">${escHtml(ev.description || '')}${ev.how ? ' — ' + escHtml(ev.how) : ''}</div>
         </div>
-        <button class="btn btn-secondary btn-sm" data-ce-edit="${escHtml(ev.filename)}">Edit script</button>
-        <button class="btn btn-danger btn-sm" data-ce-del="${escHtml(ev.name)}">Delete</button>
-      </div>`).join('');
+        <button class="icon-act" data-ce-edit="${escHtml(ev.filename)}" title="Edit detector script">✎</button>
+        <button class="icon-act danger" data-ce-del="${escHtml(ev.name)}" title="Delete (removes script + unwires)">🗑</button>
+      </div>`).join('')}</div>`;
     el.querySelectorAll('[data-ce-edit]').forEach(b => b.onclick = () => openFileEditor('hooks/' + b.dataset.ceEdit));
     el.querySelectorAll('[data-ce-del]').forEach(b => b.onclick = async () => {
       if (!await confirmDlg('Delete Custom Event', `Delete "${b.dataset.ceDel}"? This removes its script and unwires it from settings.json.`)) return;
@@ -1367,16 +1366,16 @@ function renderElsewhereHooks(items) {
     wrap.innerHTML = '<div style="font-size:12px;color:var(--text-dim);padding:8px 0">No scripts found inside skills or plugins.</div>';
     return;
   }
-  wrap.innerHTML = `
-    ${items.map(f => `
-      <div class="card" style="margin-bottom:6px;display:flex;align-items:center;gap:10px;padding:10px 14px">
-        <div style="flex:1;min-width:0">
-          <div style="font-weight:600;font-size:12px;font-family:monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(f.path)}">${escHtml(f.path)}</div>
-          <div style="font-size:11px;color:var(--text-muted)">${f.size} · ${fmtDate(f.modified)}</div>
+  wrap.innerHTML = `<div class="list">${items.map(f => `
+      <div class="list-row">
+        <span style="font-size:14px">📦</span>
+        <div class="list-main">
+          <div class="list-title mono" title="${escHtml(f.path)}">${escHtml(f.path)}</div>
+          <div class="list-sub">${f.size} · ${fmtDate(f.modified)}</div>
         </div>
-        <button class="btn-explain" data-ew-explain="${escHtml(f.path)}" title="Explain with AI">🤖</button>
-        <button class="btn btn-secondary btn-sm" data-ew-edit="${escHtml(f.path)}">Edit</button>
-      </div>`).join('')}`;
+        <button class="icon-act accent" data-ew-explain="${escHtml(f.path)}" title="Explain with AI">🤖</button>
+        <button class="icon-act" data-ew-edit="${escHtml(f.path)}" title="Edit">✎</button>
+      </div>`).join('')}</div>`;
   wrap.querySelectorAll('[data-ew-edit]').forEach(b => b.onclick = () => openFileEditor(b.dataset.ewEdit));
   wrap.querySelectorAll('[data-ew-explain]').forEach(b => b.onclick = () => explainFile(b.dataset.ewExplain));
 }
@@ -1415,19 +1414,19 @@ async function openFileExplorer(relDir, title) {
     const entries = await api('GET', '/files/tree?dir=' + encodeURIComponent(relDir));
     if (!entries.length) { list.innerHTML = '<div style="padding:20px;color:var(--text-muted)">This folder is empty.</div>'; return; }
     const prefix = relDir.replace(/\/+$/, '') + '/';
-    list.innerHTML = entries.map(e => {
+    list.innerHTML = `<div class="list">${entries.map(e => {
       const display = e.path.startsWith(prefix) ? e.path.slice(prefix.length) : e.path;
       return `
-      <div class="card" style="margin-bottom:6px;display:flex;align-items:center;gap:10px;padding:9px 14px">
+      <div class="list-row">
         <span style="font-size:14px">${display.endsWith('.md') ? '📄' : /\.(py|mjs|js|sh)$/.test(display) ? '⚙️' : '📎'}</span>
-        <div style="flex:1;min-width:0">
-          <div style="font-weight:600;font-size:12px;font-family:monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(e.path)}">${escHtml(display)}</div>
-          <div style="font-size:11px;color:var(--text-muted)">${e.size} · ${fmtDate(e.modified)}</div>
+        <div class="list-main">
+          <div class="list-title mono" title="${escHtml(e.path)}">${escHtml(display)}</div>
+          <div class="list-sub">${e.size} · ${fmtDate(e.modified)}</div>
         </div>
-        <button class="btn-explain" data-fe-explain="${escHtml(e.path)}" title="Explain with AI">🤖 Explain</button>
-        <button class="btn btn-secondary btn-sm" data-fe-edit="${escHtml(e.path)}">Edit</button>
+        <button class="icon-act accent" data-fe-explain="${escHtml(e.path)}" title="Explain with AI">🤖</button>
+        <button class="icon-act" data-fe-edit="${escHtml(e.path)}" title="Edit">✎</button>
       </div>`;
-    }).join('');
+    }).join('')}</div>`;
     list.querySelectorAll('[data-fe-edit]').forEach(b => b.onclick = () => openFileEditor(b.dataset.feEdit));
     list.querySelectorAll('[data-fe-explain]').forEach(b => b.onclick = () => explainFile(b.dataset.feExplain));
   } catch (e) {
@@ -1729,16 +1728,17 @@ async function deleteHookCommand(evt, idx) {
 function renderHookFiles(files) {
   const el = document.getElementById('hook-files-list');
   if (!files.length) { el.innerHTML = '<div class="text-muted" style="font-size:13px">No hook files yet. Click "+ New Hook File" to create one.</div>'; return; }
-  el.innerHTML = files.map(f => `
-    <div class="card" style="margin-bottom:8px;display:flex;align-items:center;gap:10px">
-      <div style="flex:1;min-width:0">
-        <div style="font-weight:600;font-size:13px">${escHtml(f.name)}</div>
-        <div style="font-size:11px;color:var(--text-muted)">${f.size} · ${fmtDate(f.modified)}</div>
+  el.innerHTML = `<div class="list">${files.map(f => `
+    <div class="list-row">
+      <span style="font-size:14px">📄</span>
+      <div class="list-main">
+        <div class="list-title mono">${escHtml(f.name)}</div>
+        <div class="list-sub">${f.size} · ${fmtDate(f.modified)}</div>
       </div>
-      <button class="btn-explain" data-hf-explain="${escHtml(f.name)}" title="Explain with AI">🤖</button>
-      <button class="btn btn-secondary btn-sm" data-hf-edit="${escHtml(f.name)}">Edit</button>
-      <button class="btn btn-danger btn-sm"    data-hf-del="${escHtml(f.name)}">Delete</button>
-    </div>`).join('');
+      <button class="icon-act accent" data-hf-explain="${escHtml(f.name)}" title="Explain with AI">🤖</button>
+      <button class="icon-act" data-hf-edit="${escHtml(f.name)}" title="Edit">✎</button>
+      <button class="icon-act danger" data-hf-del="${escHtml(f.name)}" title="Delete">🗑</button>
+    </div>`).join('')}</div>`;
   el.querySelectorAll('[data-hf-explain]').forEach(b => {
     b.onclick = () => {
       const file = files.find(f => f.name === b.dataset.hfExplain);
@@ -2899,7 +2899,7 @@ function renderItemGrid(gridId, items, type, icon, onEdit, onDelete, useDisplayN
         <div class="skill-card-meta"><span>${item.size}</span><span>${fmtDate(item.modified)}</span></div>
         <div class="skill-card-actions">
           ${(type === 'skill' || type === 'agent' || type === 'command') && !item.external ? `<button class="btn btn-run btn-sm" data-run="${escHtml(item.name)}" title="Run one-shot, streaming JSONL output to a file">▶ Run</button>` : ''}
-          <button class="btn btn-secondary btn-sm" data-edit="${escHtml(item.name)}"${item.external ? ` data-edit-path="${escHtml(item.path)}"` : ''}>Edit</button>
+          <button class="btn btn-secondary btn-sm" data-edit="${escHtml(item.name)}"${item.external ? ` data-edit-path="${escHtml(item.path)}"` : ''} title="Edit">✎ Edit</button>
           <details class="more-menu">
             <summary title="More actions">⋯</summary>
             <div class="more-menu-list">
@@ -3008,7 +3008,7 @@ async function loadPlugins() {
         <td colspan="2" style="font-size:12px;color:var(--text-muted)" title="${escHtml(p.configFile || '')}">${escHtml((p.configFile || 'settings.json').split(' ')[0])}</td>
         <td data-update-cell><span style="font-size:12px;color:var(--text-muted)">—</span></td>
         <td>
-          <button class="btn btn-danger btn-sm" data-mcp-remove="${escHtml(p.id)}" style="font-size:11px;padding:3px 8px">Remove</button>
+          <button class="icon-act danger" data-mcp-remove="${escHtml(p.id)}" title="Remove this MCP server from its config file">🗑</button>
         </td>
       </tr>`;
     }
@@ -3030,9 +3030,9 @@ async function loadPlugins() {
             <div class="toggle-track"></div>
             <span class="plugin-status" style="font-size:12px;color:var(--text-muted)">${p.enabled ? 'On' : 'Off'}</span>
           </label>
-          <button class="btn btn-secondary btn-sm" data-plugin-update="${escHtml(p.id)}"    style="font-size:11px;padding:3px 8px" title="claude plugin update">↑ Update</button>
-          <button class="btn btn-secondary btn-sm" data-plugin-reinstall="${escHtml(p.id)}" style="font-size:11px;padding:3px 8px" title="claude plugin install (add again)">⟳ Reinstall</button>
-          <button class="btn btn-danger btn-sm"    data-plugin-remove="${escHtml(p.id)}"    style="font-size:11px;padding:3px 8px" title="claude plugin uninstall">✕ Remove</button>
+          <button class="icon-act" data-plugin-update="${escHtml(p.id)}" title="Update (claude plugin update)">↑</button>
+          <button class="icon-act" data-plugin-reinstall="${escHtml(p.id)}" title="Reinstall (claude plugin install)">⟳</button>
+          <button class="icon-act danger" data-plugin-remove="${escHtml(p.id)}" title="Remove (claude plugin uninstall)">🗑</button>
         </div>
       </td>
     </tr>`;
@@ -3645,7 +3645,7 @@ function kbRenderCurrent(parsed, rawContent) {
         <td style="font-family:monospace;font-size:12px;font-weight:600">${escHtml(key)}</td>
         <td style="font-family:monospace;font-size:12px">${action === null ? '<span class="badge badge-warning" style="font-size:10px">unbound</span>' : escHtml(action)}</td>
         <td style="font-size:11px;color:var(--text-muted)">${action === null ? 'Default shortcut disabled' : escHtml(known?.t || 'Custom action')}</td>
-        <td><button class="btn btn-danger btn-sm" data-kb-del="${bi}::${escHtml(key)}" style="font-size:10px;padding:2px 8px">✕</button></td>
+        <td><button class="icon-act danger" data-kb-del="${bi}::${escHtml(key)}" title="Remove this binding">🗑</button></td>
       </tr>`);
     });
   });

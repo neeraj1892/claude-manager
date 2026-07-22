@@ -1802,3 +1802,49 @@ body.light .ov-concept { border-color: transparent; box-shadow: 0 1px 3px rgba(0
 .more-menu-list .btn:hover { background: var(--surface3); transform: none; }
 .more-menu-list .more-menu-danger { color: var(--danger); }
 .more-menu-list .more-menu-danger:hover { background: var(--danger-bg); }
+
+/* ═══════════════════════════════════════════════════════════════
+   LIST COMPONENT — one container, hairline-divided rows (Apple table
+   style) instead of stacked individual cards; icon-only row actions.
+   ═══════════════════════════════════════════════════════════════ */
+.list {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+body.light .list { border-color: transparent; box-shadow: 0 1px 3px rgba(0,0,0,0.05), 0 4px 14px rgba(0,0,0,0.04); }
+.list-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 16px;
+  border-bottom: 1px solid var(--border);
+  transition: background .12s;
+}
+.list-row:last-child { border-bottom: none; }
+.list-row:hover { background: var(--surface2); }
+.list-main { flex: 1; min-width: 0; }
+.list-title { font-weight: 600; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.list-title.mono { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 12px; }
+.list-sub { font-size: 11px; color: var(--text-muted); margin-top: 1px; }
+
+/* Icon-only action: symbol + tooltip, no label */
+.icon-act {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 28px;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 14px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background .12s, color .12s;
+}
+.icon-act:hover { background: var(--surface3); color: var(--text); }
+.icon-act.danger:hover { background: var(--danger-bg); color: var(--danger); }
+.icon-act.accent:hover { background: var(--accent-dim); color: var(--accent); }
