@@ -666,14 +666,20 @@ async function loadOverview() {
   try {
     const d = await api('GET', '/overview');
     document.getElementById('overview-path').textContent = d.path;
+    const pluginsSub = d.plugins > 0 ? `${d.enabledPlugins} enabled · ${d.plugins - d.enabledPlugins} disabled` : 'none installed';
     document.getElementById('stat-grid').innerHTML = [
-      { v: d.skills,                       label: 'Skills',        s: 'skills',   icon: '🧩' },
-      { v: d.agents || 0,                  label: 'Agents',        s: 'agents',   icon: '🤖' },
-      { v: d.hookEvents,                   label: 'Hook Events',   s: 'hooks',    icon: '🔗' },
-      { v: `${d.enabledPlugins}/${d.plugins}`, label: 'Plugins',   s: 'plugins',  icon: '🔌' },
-      { v: d.commands,                     label: 'Commands',      s: 'commands', icon: '⌨️' },
-    ].map(({ v, label, s, icon }) =>
-      `<div class="stat-card" onclick="navigate('${s}')"><div class="stat-value">${v}</div><div class="stat-label">${icon} ${label}</div></div>`
+      { v: d.skills,           label: 'Skills',       s: 'skills',   icon: '🧩' },
+      { v: d.agents || 0,      label: 'Agents',       s: 'agents',   icon: '🤖' },
+      { v: d.hookEvents,       label: 'Hook Events',  s: 'hooks',    icon: '🔗' },
+      { v: d.plugins,          label: 'Plugins',      s: 'plugins',  icon: '🧱', sub: pluginsSub },
+      { v: d.mcpServers || 0,  label: 'MCP Servers',  s: 'plugins',  icon: '🔌' },
+      { v: d.commands,         label: 'Commands',     s: 'commands', icon: '⌨️' },
+    ].map(({ v, label, s, icon, sub }) =>
+      `<div class="stat-card" onclick="navigate('${s}')">
+        <div class="stat-value">${v}</div>
+        <div class="stat-label">${icon} ${label}</div>
+        ${sub ? `<div style="font-size:10px;color:var(--text-dim);margin-top:2px">${sub}</div>` : ''}
+      </div>`
     ).join('');
     document.getElementById('overview-info').innerHTML = `
       <div style="display:flex;flex-direction:column;gap:10px">

@@ -187,6 +187,21 @@ test('uninstall tolerates CLI "plugin not found" errors (still cleans local reco
   assert.ok(!('ghost-plugin' in (after_.enabledPlugins || {})));
 });
 
+test('REGRESSION: overview plugin/MCP counts match the Plugins tab exactly', async () => {
+  const [{ data: overview }, { data: plugins }] = await Promise.all([
+    s.api('GET', '/overview'), s.api('GET', '/plugins'),
+  ]);
+  const claudePlugins = plugins.filter(p => !p.isMcpServer);
+  const mcpServers    = plugins.filter(p => p.isMcpServer);
+  assert.equal(overview.plugins, claudePlugins.length,
+    `overview.plugins (${overview.plugins}) must equal Plugins-tab count (${claudePlugins.length})`);
+  assert.equal(overview.enabledPlugins, claudePlugins.filter(p => p.enabled).length);
+  assert.equal(overview.mcpServers, mcpServers.length,
+    `overview.mcpServers (${overview.mcpServers}) must equal MCP count (${mcpServers.length})`);
+  // Sanity: this server has MCP servers merged from settings.json + ~/.claude.json
+  assert.ok(overview.mcpServers >= 1, 'MCP servers are counted at all');
+});
+
 test('compose-workflow with an empty toolbox -> helpful 400', async () => {
   // This server has plugins/MCP servers but no skills/agents/hooks/commands
   const { status, data } = await s.api('POST', '/ai/compose-workflow', { goal: 'anything', provider: 'claude-cli' });

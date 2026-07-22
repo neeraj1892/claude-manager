@@ -693,28 +693,34 @@ app.get('/api/overview', (req, res) => {
   const hooksDir = join(claudeDir, 'hooks');
   const commandsDir = join(claudeDir, 'commands');
   const settings = readJson(join(claudeDir, 'settings.json'));
-  const plugins = readJson(join(claudeDir, 'plugins', 'installed_plugins.json'));
 
   const skillCount = existsSync(skillsDir)
     ? readdirSync(skillsDir, { withFileTypes: true }).filter(d => d.isDirectory()).length : 0;
+  // Recursive, matching what the Hooks tab shows
   const hookFileCount = existsSync(hooksDir)
-    ? readdirSync(hooksDir).filter(f => HOOK_EXTS.test(f)).length : 0;
+    ? walkFiles(hooksDir).filter(f => HOOK_EXTS.test(f)).length : 0;
   const hookEventCount = Object.keys(settings.hooks || {}).length;
-  const pluginCount = Object.keys((plugins.plugins) || {}).length;
-  const enabledPluginCount = Object.values(plugins.enabledPlugins || {}).filter(Boolean).length;
+
+  // Same merged source the Plugins tab uses — counts can never disagree
+  const all = listAllPlugins();
+  const claudePlugins = all.filter(p => !p.isMcpServer);
+  const mcpServers    = all.filter(p => p.isMcpServer);
+
   const commandCount = existsSync(commandsDir)
     ? readdirSync(commandsDir).filter(f => f.endsWith('.md')).length : 0;
   const agentsDir = join(claudeDir, 'agents');
+  // Recursive, matching what the Agents tab shows
   const agentCount = existsSync(agentsDir)
-    ? readdirSync(agentsDir).filter(f => f.endsWith('.md')).length : 0;
+    ? walkFiles(agentsDir).filter(f => f.endsWith('.md')).length : 0;
 
   res.json({
     path: claudeDir,
     skills: skillCount,
     hookFiles: hookFileCount,
     hookEvents: hookEventCount,
-    plugins: pluginCount,
-    enabledPlugins: enabledPluginCount,
+    plugins: claudePlugins.length,
+    enabledPlugins: claudePlugins.filter(p => p.enabled).length,
+    mcpServers: mcpServers.length,
     commands: commandCount,
     agents: agentCount,
     hasKeybindings: existsSync(join(claudeDir, 'keybindings.json')),
@@ -1025,7 +1031,9 @@ function describeMcpServer(id, cfg) {
   return `${cfg.type === 'sse' || cfg.type === 'http' ? 'Remote' : 'Local'} MCP server${target ? ' — ' + target.slice(0, 80) : ''}`;
 }
 
-app.get('/api/plugins', (req, res) => {
+// Single source of truth for "what's installed" — used by /api/plugins AND
+// /api/overview so their numbers can never disagree.
+function listAllPlugins() {
   const pluginsFile = join(claudeDir, 'plugins', 'installed_plugins.json');
   const settings = readJson(join(claudeDir, 'settings.json'));
   const pluginData = readJson(pluginsFile, { plugins: {}, enabledPlugins: {} });
@@ -1092,7 +1100,11 @@ app.get('/api/plugins', (req, res) => {
     });
   });
 
-  res.json(result);
+  return result;
+}
+
+app.get('/api/plugins', (req, res) => {
+  res.json(listAllPlugins());
 });
 
 app.delete('/api/plugins/:id/mcp', (req, res) => {
