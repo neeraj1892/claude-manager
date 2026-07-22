@@ -2697,7 +2697,7 @@ async function buildWfComponents() {
 function renderWfReview(components) {
   const list = document.getElementById('wfReviewList');
   list.style.display = '';
-  list.innerHTML = `<div style="font-size:12px;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">Review &amp; Edit Before Installing</div>`
+  list.innerHTML = `<div class="subhead">Review &amp; Edit Before Installing</div>`
     + components.map((c, i) => `
     <div class="wf-review-card" id="wfrc-${i}">
       <div class="wf-review-card-top">
@@ -2899,11 +2899,16 @@ function renderItemGrid(gridId, items, type, icon, onEdit, onDelete, useDisplayN
         <div class="skill-card-meta"><span>${item.size}</span><span>${fmtDate(item.modified)}</span></div>
         <div class="skill-card-actions">
           ${(type === 'skill' || type === 'agent' || type === 'command') && !item.external ? `<button class="btn btn-run btn-sm" data-run="${escHtml(item.name)}" title="Run one-shot, streaming JSONL output to a file">▶ Run</button>` : ''}
-          ${type === 'skill' ? `<button class="btn btn-secondary btn-sm" data-files="${escHtml(item.name)}" title="Browse every file inside this skill — scripts, references, hooks">📂 Files</button>` : ''}
-          <button class="btn-explain" data-explain="${escHtml(item.name)}" title="Explain with AI">🤖 Explain</button>
-          ${type !== 'command' && !item.external ? `<button class="btn btn-secondary btn-sm" data-improve="${escHtml(item.name)}" title="Improve with AI">✨ Improve</button>` : ''}
           <button class="btn btn-secondary btn-sm" data-edit="${escHtml(item.name)}"${item.external ? ` data-edit-path="${escHtml(item.path)}"` : ''}>Edit</button>
-          ${!item.external ? `<button class="btn btn-danger btn-sm" data-del="${escHtml(item.name)}">Delete</button>` : ''}
+          <details class="more-menu">
+            <summary title="More actions">⋯</summary>
+            <div class="more-menu-list">
+              ${type === 'skill' ? `<button class="btn btn-sm" data-files="${escHtml(item.name)}">📂 Browse files</button>` : ''}
+              <button class="btn btn-sm" data-explain="${escHtml(item.name)}">🤖 Explain with AI</button>
+              ${type !== 'command' && !item.external ? `<button class="btn btn-sm" data-improve="${escHtml(item.name)}">✨ Improve with AI</button>` : ''}
+              ${!item.external ? `<button class="btn btn-sm more-menu-danger" data-del="${escHtml(item.name)}">🗑 Delete</button>` : ''}
+            </div>
+          </details>
         </div>
       </div>`;
   }).join('');
@@ -4958,7 +4963,7 @@ document.getElementById('composeAnalyze').onclick = async () => {
 
     const ex = document.getElementById('composeExisting');
     ex.innerHTML = plan.components.length ? `
-      <div style="font-size:12px;color:var(--text-dim);margin:10px 0 6px;font-weight:600;text-transform:uppercase;letter-spacing:.5px">Uses these installed resources</div>
+      <div class="subhead">Uses these installed resources</div>
       ${plan.components.map(c => `
         <div class="card" style="margin-bottom:6px;padding:9px 14px;display:flex;gap:10px;align-items:center;border-left:3px solid var(--success)">
           <span>${COMPOSE_TYPE_ICON[c.type] || '📦'}</span>
@@ -4970,7 +4975,7 @@ document.getElementById('composeAnalyze').onclick = async () => {
 
     const mi = document.getElementById('composeMissing');
     mi.innerHTML = plan.missing.length ? `
-      <div style="font-size:12px;color:var(--text-dim);margin:12px 0 6px;font-weight:600;text-transform:uppercase;letter-spacing:.5px">Needs to be created</div>
+      <div class="subhead">Needs to be created</div>
       ${plan.missing.map((m, i) => `
         <div class="card" style="margin-bottom:6px;padding:9px 14px;display:flex;gap:10px;align-items:center;border-left:3px solid var(--warning)">
           <span>${COMPOSE_TYPE_ICON[m.type] || '📦'}</span>
@@ -4991,7 +4996,7 @@ document.getElementById('composeAnalyze').onclick = async () => {
 
     const gd = document.getElementById('composeGuide');
     gd.innerHTML = (plan.setupGuide || []).length ? `
-      <div style="font-size:12px;color:var(--text-dim);margin:12px 0 6px;font-weight:600;text-transform:uppercase;letter-spacing:.5px">How to activate</div>
+      <div class="subhead">How to activate</div>
       <ol style="font-size:13px;line-height:1.7;padding-left:20px;margin:0">${plan.setupGuide.map(x => `<li>${escHtml(x)}</li>`).join('')}</ol>` : '';
 
     composeShow('result');
@@ -6169,7 +6174,7 @@ async function loadWorkflows() {
   };
   const section = document.getElementById('section-workflows');
   const myWfHtml = myWorkflows.length ? `
-    <div style="font-size:12px;color:var(--text-dim);margin-bottom:14px;font-weight:600;text-transform:uppercase;letter-spacing:.5px">Your Workflows</div>
+    <div class="subhead">Your Workflows</div>
     <div class="workflow-grid" style="margin-bottom:22px">
       ${myWorkflows.map(w => `
         <div class="workflow-card">
@@ -6215,7 +6220,7 @@ async function loadWorkflows() {
     </div>
 
     ${myWfHtml}
-    <div style="font-size:12px;color:var(--text-dim);margin-bottom:14px;font-weight:600;text-transform:uppercase;letter-spacing:.5px">Pre-built Templates</div>
+    <div class="subhead">Pre-built Templates</div>
     <div class="workflow-grid">
       ${WORKFLOWS.map(w => {
         const st = wfStatus(w);
@@ -6501,6 +6506,13 @@ window.wfInstallAll = async function(workflowId) {
 window.loadWorkflows      = loadWorkflows;
 window.showWorkflowDetail = showWorkflowDetail;
 window.openWorkflowWizard = openWorkflowWizard;
+
+// Close any open ⋯ menus when clicking elsewhere (native details doesn't)
+document.addEventListener('click', (e) => {
+  document.querySelectorAll('details.more-menu[open]').forEach(d => {
+    if (!d.contains(e.target)) d.removeAttribute('open');
+  });
+});
 
 // ===== BOOT =====
 checkFolderValid();

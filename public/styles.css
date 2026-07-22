@@ -1706,3 +1706,99 @@ body.light .ov-concept { border-color: transparent; box-shadow: 0 1px 3px rgba(0
 .ov-start-title { font-weight: 650; font-size: 13px; }
 .ov-start-body { font-size: 12px; color: var(--text-muted); line-height: 1.55; flex: 1; }
 .ov-start .btn { align-self: flex-start; }
+
+/* ═══════════════════════════════════════════════════════════════
+   RHYTHM PASS — you should always know where a section starts.
+   One subsection component + generous whitespace before it; quieter
+   explainers so structure, not decoration, carries the page.
+   ═══════════════════════════════════════════════════════════════ */
+
+/* Subsection header: accent tick + breathing room ABOVE it. The extra
+   top margin (vs the uniform gap between ordinary items) is the signal
+   that a new group begins. */
+.subhead {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 30px 0 12px !important;
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.subhead::before {
+  content: '';
+  width: 4px;
+  height: 14px;
+  border-radius: 2px;
+  background: var(--accent);
+  flex-shrink: 0;
+}
+.subhead:first-child, .stat-grid + .subhead { margin-top: 18px !important; }
+.subhead span { text-transform: none; letter-spacing: normal; font-weight: 400; }
+
+/* Explainers: from tinted boxes to a quiet cue — less visual mass,
+   same information */
+.tab-explainer {
+  background: transparent;
+  border: none;
+  border-left: 3px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  border-radius: 0;
+  padding: 2px 0 2px 14px;
+  margin: 14px 0 6px;
+  font-size: 12.5px;
+}
+
+/* Tighter default rhythm inside a page; subheads carry the big gaps */
+.section { gap: 14px; }
+.section-header { margin-bottom: 4px; }
+
+/* ⋯ overflow menu: secondary actions off the card face (progressive disclosure) */
+.more-menu { position: relative; display: inline-block; }
+.more-menu > summary {
+  list-style: none;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 26px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  color: var(--text-muted);
+  font-size: 15px;
+  line-height: 1;
+  user-select: none;
+}
+.more-menu > summary::-webkit-details-marker { display: none; }
+.more-menu > summary:hover { background: var(--surface3); color: var(--text); }
+.more-menu[open] > summary { background: var(--accent-dim); color: var(--accent); border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); }
+.more-menu-list {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 60;
+  min-width: 170px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.more-menu-list .btn {
+  justify-content: flex-start;
+  width: 100%;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  color: var(--text);
+  font-weight: 500;
+}
+.more-menu-list .btn:hover { background: var(--surface3); transform: none; }
+.more-menu-list .more-menu-danger { color: var(--danger); }
+.more-menu-list .more-menu-danger:hover { background: var(--danger-bg); }

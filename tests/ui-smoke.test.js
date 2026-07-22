@@ -34,6 +34,7 @@ before(async (t) => {
       if (path.includes('/overview')) return { skills: 1, agents: 2, hookEvents: 3, plugins: 4, enabledPlugins: 2, mcpServers: 5, commands: 6, hookFiles: 0, model: 'default', path: '/x' };
       if (path.includes('/hooks')) return { files: [], elsewhere: [], settings: {} };
       if (path.includes('/workflows')) return [];
+      if (path.endsWith('/api/skills')) return [{ name: 'demo-skill', description: 'demo', size: '1 KB', modified: new Date().toISOString() }];
       return [];
     } };
   };
@@ -95,6 +96,21 @@ test('workflow templates: Run disabled + Install shown until components exist', 
   assert.ok(run.disabled, 'Run disabled when workflow not installed');
   assert.ok(run.title.toLowerCase().includes('install'), 'disabled Run explains why');
   assert.ok(card.querySelector('[data-wf-card-install]'), 'Install button present on the card');
+});
+
+test('cards: primary actions visible, secondary behind a ⋯ menu; subheads mark sections', async (t) => {
+  if (skipIfNoDom(t)) return;
+  await w.eval('loadSkills()');
+  await new Promise(r => setTimeout(r, 30));
+  const card = w.document.querySelector('#skills-grid .skill-card');
+  assert.ok(card, 'skill card rendered');
+  const visibleBtns = card.querySelectorAll('.skill-card-actions > .btn');
+  assert.ok(visibleBtns.length <= 2, 'at most Run + Edit on the card face, got ' + visibleBtns.length);
+  const menu = card.querySelector('details.more-menu');
+  assert.ok(menu, '⋯ overflow menu present');
+  assert.ok(menu.querySelector('[data-del]'), 'Delete lives in the menu');
+  assert.ok(menu.querySelector('[data-explain]'), 'Explain lives in the menu');
+  assert.ok(w.document.querySelectorAll('.subhead').length >= 2, 'subsection headers present');
 });
 
 test('keybindings + hooks subtabs render (regression)', async (t) => {
