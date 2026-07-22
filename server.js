@@ -2963,6 +2963,109 @@ app.get('/api/runs', (req, res) => {
   res.json(Object.values(_runs).map(({ _child, tail, ...r }) => r).sort((a, b) => b.startedAt.localeCompare(a.startedAt)).slice(0, 50));
 });
 
+// --- API: Updates from Anthropic ---
+// Keeps the app aligned with Anthropic's moving targets: the Claude Code CLI
+// version (npm) and the hook-event catalog (docs). New events discovered in
+// the docs can be applied and immediately appear in all event dropdowns.
+
+const BUILTIN_HOOK_EVENTS = [
+  'PreToolUse', 'PostToolUse', 'PostToolUseFailure', 'PermissionRequest', 'PermissionDenied',
+  'SessionStart', 'SessionEnd', 'Setup', 'UserPromptSubmit',
+  'Stop', 'StopFailure', 'Notification',
+  'SubagentStart', 'SubagentStop',
+  'PreCompact', 'PostCompact', 'ConfigChange', 'CwdChanged', 'FileChanged',
+];
+// Hook events are CamelCase with a recognizable final hump (PreToolUse,
+// PermissionDenied, FileChanged…) or one of a few single-word names.
+const HOOK_EVENT_SUFFIXES = ['Use', 'Failure', 'Request', 'Denied', 'Submit', 'Start', 'Stop', 'End', 'Compact', 'Change', 'Changed'];
+const HOOK_EVENT_SINGLES = new Set(['Stop', 'Setup', 'Notification']);
+const HOOK_EVENT_BLOCKLIST = new Set(['QuickStart', 'GetStarted', 'JumpStart', 'ChangeLog']);
+
+function extractHookEvents(text) {
+  const counts = {};
+  (text.match(/\b[A-Z][a-z]+(?:[A-Z][a-z]+)*\b/g) || []).forEach(t => { counts[t] = (counts[t] || 0) + 1; });
+  const out = new Set();
+  for (const [tok, n] of Object.entries(counts)) {
+    if (n < 3 || HOOK_EVENT_BLOCKLIST.has(tok)) continue; // must recur — one-off prose words don't
+    if (HOOK_EVENT_SINGLES.has(tok)) { out.add(tok); continue; }
+    const humps = tok.match(/[A-Z][a-z]+/g) || [];
+    if (humps.length < 2) continue;
+    if (HOOK_EVENT_SUFFIXES.includes(humps[humps.length - 1])) out.add(tok);
+  }
+  return [...out];
+}
+
+app.get('/api/hook-events', (req, res) => {
+  const cfg = loadConfig();
+  const dynamic = (cfg.dynamicHookEvents || []).filter(e => !BUILTIN_HOOK_EVENTS.includes(e));
+  res.json({ builtin: BUILTIN_HOOK_EVENTS, dynamic, all: [...BUILTIN_HOOK_EVENTS, ...dynamic] });
+});
+
+app.get('/api/updates/check', async (req, res) => {
+  const result = {
+    appVersion: readJson(join(__dirname, 'package.json'), {}).version || 'unknown',
+    checkedAt: new Date().toISOString(),
+  };
+
+  // 1) Claude Code CLI: installed version vs latest on npm
+  let cliCurrent = null;
+  try {
+    cliCurrent = execSync('claude --version', { shell: true, stdio: 'pipe', timeout: 8000 })
+      .toString().match(/\d+\.\d+\.\d+/)?.[0] || null;
+  } catch {}
+  const npmUrl = process.env.UPDATES_NPM_URL || 'https://registry.npmjs.org/@anthropic-ai/claude-code/latest';
+  const latestPkg = await fetchJsonUrl(npmUrl);
+  const cliLatest = latestPkg?.version || null;
+  result.cli = {
+    installed: !!cliCurrent,
+    current: cliCurrent,
+    latest: cliLatest,
+    hasUpdate: !!(cliCurrent && cliLatest && cliCurrent !== cliLatest),
+  };
+
+  // 2) Hook events: discover the catalog from Anthropic's docs
+  const docsUrl = process.env.UPDATES_DOCS_URL || 'https://docs.claude.com/en/docs/claude-code/hooks';
+  const page = await fetchTextUrl(docsUrl);
+  if (page) {
+    const found = extractHookEvents(page);
+    const cfg = loadConfig();
+    const known = new Set([...BUILTIN_HOOK_EVENTS, ...(cfg.dynamicHookEvents || [])]);
+    result.hookEvents = {
+      knownCount: known.size,
+      foundCount: found.length,
+      newEvents: found.filter(e => !known.has(e)).sort(),
+      source: docsUrl,
+    };
+  } else {
+    result.hookEvents = { error: 'Could not fetch the hooks documentation page — check your connection.' };
+  }
+
+  const cfg = loadConfig();
+  cfg.lastUpdateCheck = result.checkedAt;
+  saveConfig(cfg);
+  res.json(result);
+});
+
+app.post('/api/updates/hook-events/apply', (req, res) => {
+  const { events } = req.body;
+  if (!Array.isArray(events) || !events.length || events.some(e => typeof e !== 'string' || !/^[A-Za-z]{3,40}$/.test(e))) {
+    return res.status(400).json({ error: 'events must be an array of event names' });
+  }
+  const cfg = loadConfig();
+  cfg.dynamicHookEvents = [...new Set([...(cfg.dynamicHookEvents || []), ...events])]
+    .filter(e => !BUILTIN_HOOK_EVENTS.includes(e));
+  saveConfig(cfg);
+  res.json({ ok: true, dynamic: cfg.dynamicHookEvents });
+});
+
+app.post('/api/updates/cli', (req, res) => {
+  if (!claudeCliAvailable) return res.status(400).json({ error: 'Claude CLI not found — install it first: npm install -g @anthropic-ai/claude-code' });
+  exec('claude update', { timeout: 120000, shell: true }, (err, stdout, stderr) => {
+    if (err) return res.status(500).json({ error: (stderr || err.message).trim() || 'Update failed' });
+    res.json({ ok: true, output: (stdout || '').trim() || 'Claude Code updated.' });
+  });
+});
+
 // --- Start ---
 function openBrowser(url) {
   const cmd = process.platform === 'win32' ? `start "" "${url}"`

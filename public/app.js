@@ -893,6 +893,80 @@ document.getElementById('settingsAiApply').onclick = async () => {
   }
 };
 
+// ===== UPDATES FROM ANTHROPIC =====
+document.getElementById('checkUpdatesBtn').onclick = async () => {
+  const btn = document.getElementById('checkUpdatesBtn');
+  const out = document.getElementById('updatesResults');
+  btn.disabled = true; btn.textContent = 'Checking…';
+  out.innerHTML = '<div style="font-size:13px;color:var(--text-muted)">Querying npm registry and Anthropic docs…</div>';
+  try {
+    const r = await api('GET', '/updates/check');
+    document.getElementById('updatesLastChecked').textContent = 'Last checked: ' + new Date(r.checkedAt).toLocaleString();
+    const rows = [];
+
+    // Claude Code CLI
+    const cli = r.cli || {};
+    rows.push(`
+      <div class="card" style="display:flex;align-items:center;gap:12px;padding:12px 14px">
+        <span style="font-size:18px">⚡</span>
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:600;font-size:13px">Claude Code CLI</div>
+          <div style="font-size:12px;color:var(--text-muted)">
+            ${!cli.installed ? 'Not installed' : `Installed: <code>${escHtml(cli.current || '?')}</code>`} ·
+            Latest on npm: <code>${escHtml(cli.latest || 'unknown')}</code>
+          </div>
+        </div>
+        ${cli.hasUpdate
+          ? '<button class="btn btn-primary btn-sm" id="updateCliBtn">↑ Run claude update</button>'
+          : cli.installed
+            ? '<span class="badge badge-success">✓ Up to date</span>'
+            : '<span class="badge badge-warning">not installed</span>'}
+      </div>`);
+
+    // Hook events
+    const he = r.hookEvents || {};
+    if (he.error) {
+      rows.push(`<div class="card" style="padding:12px 14px;font-size:12px;color:var(--danger)">🔗 Hook events: ${escHtml(he.error)}</div>`);
+    } else {
+      rows.push(`
+        <div class="card" style="display:flex;align-items:center;gap:12px;padding:12px 14px">
+          <span style="font-size:18px">🔗</span>
+          <div style="flex:1;min-width:0">
+            <div style="font-weight:600;font-size:13px">Hook event catalog</div>
+            <div style="font-size:12px;color:var(--text-muted)">
+              This app knows ${he.knownCount} events · docs list ${he.foundCount}
+              ${he.newEvents?.length ? ` · <strong style="color:var(--warning)">new: ${he.newEvents.map(escHtml).join(', ')}</strong>` : ''}
+            </div>
+          </div>
+          ${he.newEvents?.length
+            ? `<button class="btn btn-primary btn-sm" id="applyHookEventsBtn">+ Add ${he.newEvents.length} to dropdowns</button>`
+            : '<span class="badge badge-success">✓ In sync with docs</span>'}
+        </div>`);
+    }
+    rows.push(`<div style="font-size:11px;color:var(--text-dim)">Claude Manager ${escHtml(r.appVersion)} · sources: registry.npmjs.org, docs.claude.com</div>`);
+    out.innerHTML = rows.join('');
+
+    document.getElementById('updateCliBtn')?.addEventListener('click', async (e) => {
+      e.target.disabled = true; e.target.textContent = 'Updating…';
+      try { const u = await api('POST', '/updates/cli', {}); toast(u.output || 'Claude Code updated'); btn.click(); }
+      catch (err) { toast('Update failed: ' + err.message, 'error'); e.target.disabled = false; e.target.textContent = '↑ Run claude update'; }
+    });
+    document.getElementById('applyHookEventsBtn')?.addEventListener('click', async (e) => {
+      e.target.disabled = true;
+      try {
+        await api('POST', '/updates/hook-events/apply', { events: he.newEvents });
+        await syncDynamicHookEvents();
+        toast(`${he.newEvents.length} new hook event${he.newEvents.length > 1 ? 's' : ''} added to all dropdowns`);
+        btn.click();
+      } catch (err) { toast(err.message, 'error'); e.target.disabled = false; }
+    });
+  } catch (e) {
+    out.innerHTML = `<div style="font-size:13px;color:var(--danger)">${escHtml(e.message)}</div>`;
+  } finally {
+    btn.disabled = false; btn.textContent = '🔄 Check for Updates';
+  }
+};
+
 async function loadSettings() {
   loadSettingsInspector();
   settingsData = await api('GET', '/settings');
@@ -1035,6 +1109,27 @@ const ALL_HOOK_EVENTS = [
   'SubagentStart','SubagentStop',
   'PreCompact','PostCompact','ConfigChange','CwdChanged','FileChanged',
 ];
+
+// Merge docs-discovered events (Settings → Updates) into the catalog + dropdowns
+async function syncDynamicHookEvents() {
+  try {
+    const { dynamic } = await api('GET', '/hook-events');
+    (dynamic || []).forEach(evt => {
+      if (ALL_HOOK_EVENTS.includes(evt)) return;
+      ALL_HOOK_EVENTS.push(evt);
+      ['hookEventSelect', 'sgWireEvent'].forEach(id => {
+        const sel = document.getElementById(id);
+        if (sel && ![...sel.options].some(o => o.value === evt)) {
+          const opt = document.createElement('option');
+          opt.value = evt;
+          opt.textContent = `${evt} — added from Anthropic docs update`;
+          sel.appendChild(opt);
+        }
+      });
+    });
+  } catch {}
+}
+syncDynamicHookEvents();
 // Events where matcher = tool name regex; all others have event-specific matcher semantics
 const MATCHER_EVENTS  = new Set(['PreToolUse','PostToolUse','PostToolUseFailure','PermissionRequest','PermissionDenied']);
 
