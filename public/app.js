@@ -3353,18 +3353,204 @@ async function updatePlugin(id, latestVersion) {
 
 // ===== KEYBINDINGS =====
 let keybindingsEditor = null;
+// Official contexts + common actions (code.claude.com/docs/en/keybindings)
+const KB_CATALOG = {
+  Global: [
+    { a: 'app:interrupt', d: 'Ctrl+C', t: 'Cancel current operation (reserved default)' },
+    { a: 'app:toggleTodos', d: 'Ctrl+T', t: "Toggle Claude's to-do checklist" },
+    { a: 'app:toggleTranscript', d: 'Ctrl+O', t: 'Toggle verbose transcript' },
+    { a: 'app:redraw', d: '—', t: 'Force terminal redraw' },
+    { a: 'history:search', d: 'Ctrl+R', t: 'Open history search' },
+    { a: 'history:previous', d: 'Up', t: 'Previous history item' },
+    { a: 'history:next', d: 'Down', t: 'Next history item' },
+  ],
+  Chat: [
+    { a: 'chat:submit', d: 'Enter', t: 'Submit message' },
+    { a: 'chat:newline', d: 'Ctrl+J', t: 'Newline without submitting' },
+    { a: 'chat:externalEditor', d: 'Ctrl+G', t: 'Open prompt in external editor' },
+    { a: 'chat:cancel', d: 'Escape', t: 'Cancel current input' },
+    { a: 'chat:clearInput', d: 'Ctrl+L', t: 'Clear input / redraw' },
+    { a: 'chat:cycleMode', d: 'Shift+Tab', t: 'Cycle permission modes' },
+    { a: 'chat:modelPicker', d: 'Meta+P', t: 'Open model picker' },
+    { a: 'chat:thinkingToggle', d: 'Meta+T', t: 'Toggle extended thinking' },
+    { a: 'chat:stash', d: 'Ctrl+S', t: 'Stash current prompt' },
+    { a: 'chat:undo', d: 'Ctrl+_', t: 'Undo last action' },
+    { a: 'chat:imagePaste', d: 'Ctrl+V', t: 'Paste image from clipboard' },
+    { a: 'chat:killAgents', d: 'Ctrl+X Ctrl+K', t: 'Stop all background subagents' },
+    { a: 'voice:pushToTalk', d: 'Space', t: 'Voice dictation (when enabled)' },
+  ],
+  Autocomplete: [
+    { a: 'autocomplete:accept', d: 'Tab', t: 'Accept suggestion' },
+    { a: 'autocomplete:dismiss', d: 'Escape', t: 'Dismiss menu' },
+    { a: 'autocomplete:previous', d: 'Up', t: 'Previous suggestion' },
+    { a: 'autocomplete:next', d: 'Down', t: 'Next suggestion' },
+  ],
+  Confirmation: [
+    { a: 'confirm:yes', d: 'Y / Enter', t: 'Confirm action' },
+    { a: 'confirm:no', d: 'N / Escape', t: 'Decline action' },
+    { a: 'confirm:toggle', d: 'Space', t: 'Toggle selection' },
+    { a: 'confirm:cycleMode', d: 'Shift+Tab', t: 'Cycle permission modes' },
+    { a: 'confirm:toggleExplanation', d: 'Ctrl+E', t: 'Toggle permission explanation' },
+  ],
+  Transcript: [
+    { a: 'transcript:toggleShowAll', d: 'Ctrl+E', t: 'Toggle show all content' },
+    { a: 'transcript:exit', d: 'q / Escape', t: 'Exit transcript view' },
+  ],
+  HistorySearch: [
+    { a: 'historySearch:next', d: 'Ctrl+R', t: 'Next match' },
+    { a: 'historySearch:execute', d: 'Enter', t: 'Execute selected command' },
+    { a: 'historySearch:cycleScope', d: 'Ctrl+S', t: 'Cycle scope: session/project/everywhere' },
+  ],
+  Task: [{ a: 'task:background', d: 'Ctrl+B', t: 'Background current task' }],
+  Tabs: [
+    { a: 'tabs:next', d: 'Tab / Right', t: 'Next tab' },
+    { a: 'tabs:previous', d: 'Shift+Tab / Left', t: 'Previous tab' },
+  ],
+  Select: [
+    { a: 'select:next', d: 'Down / J', t: 'Next option' },
+    { a: 'select:previous', d: 'Up / K', t: 'Previous option' },
+    { a: 'select:accept', d: 'Enter', t: 'Accept selection' },
+    { a: 'select:cancel', d: 'Escape', t: 'Cancel' },
+  ],
+  Scroll: [
+    { a: 'scroll:pageUp', d: 'PageUp', t: 'Scroll up half a viewport (fullscreen mode)' },
+    { a: 'scroll:pageDown', d: 'PageDown', t: 'Scroll down half a viewport' },
+    { a: 'scroll:top', d: 'Ctrl+Home', t: 'Jump to conversation start' },
+    { a: 'scroll:bottom', d: 'Ctrl+End', t: 'Jump to latest message' },
+    { a: 'selection:copy', d: 'Ctrl+Shift+C', t: 'Copy selected text' },
+  ],
+  Settings: [{ a: 'settings:search', d: '/', t: 'Enter search mode' }],
+  Plugin: [
+    { a: 'plugin:toggle', d: 'Space', t: 'Toggle plugin selection' },
+    { a: 'plugin:install', d: 'I', t: 'Install selected plugins' },
+    { a: 'plugin:favorite', d: 'F', t: 'Favorite selected plugin' },
+  ],
+  ModelPicker: [
+    { a: 'modelPicker:decreaseEffort', d: 'Left', t: 'Decrease effort level' },
+    { a: 'modelPicker:increaseEffort', d: 'Right', t: 'Increase effort level' },
+  ],
+  MessageSelector: [
+    { a: 'messageSelector:up', d: 'Up / K', t: 'Move up' },
+    { a: 'messageSelector:down', d: 'Down / J', t: 'Move down' },
+    { a: 'messageSelector:select', d: 'Enter', t: 'Select message' },
+  ],
+  DiffDialog: [
+    { a: 'diff:dismiss', d: 'Escape', t: 'Close diff viewer' },
+    { a: 'diff:nextFile', d: 'Down / J', t: 'Next file' },
+    { a: 'diff:previousFile', d: 'Up / K', t: 'Previous file' },
+  ],
+  Footer: [{ a: 'footer:openSelected', d: 'Enter', t: 'Open selected footer item' }],
+  Attachments: [{ a: 'attachments:remove', d: 'Backspace', t: 'Remove selected attachment' }],
+  ThemePicker: [{ a: 'theme:toggleSyntaxHighlighting', d: 'Ctrl+T', t: 'Toggle syntax highlighting' }],
+  Help: [{ a: 'help:dismiss', d: 'Escape', t: 'Close help menu' }],
+};
+
+const KB_SCAFFOLD = {
+  $schema: 'https://www.schemastore.org/claude-code-keybindings.json',
+  $docs: 'https://code.claude.com/docs/en/keybindings',
+  bindings: [
+    { context: 'Chat', bindings: { 'ctrl+e': 'chat:externalEditor' } },
+  ],
+};
+
+function kbParse(content) {
+  try {
+    const j = JSON.parse(content);
+    if (j && Array.isArray(j.bindings)) return j;
+  } catch {}
+  return null;
+}
+
+function kbPopulateForm() {
+  const ctxSel = document.getElementById('kbContext');
+  if (ctxSel.options.length === 0) {
+    ctxSel.innerHTML = Object.keys(KB_CATALOG).map(c => `<option value="${c}">${c}</option>`).join('');
+    ctxSel.value = 'Chat';
+    ctxSel.onchange = kbPopulateForm;
+  }
+  const ctx = ctxSel.value;
+  document.getElementById('kbActionList').innerHTML =
+    (KB_CATALOG[ctx] || []).map(x => `<option value="${x.a}">${x.t} (default: ${x.d})</option>`).join('');
+  document.getElementById('kbActionHint').textContent =
+    `Actions in ${ctx}: ` + (KB_CATALOG[ctx] || []).map(x => x.a).join(' · ');
+}
+
+function kbRenderCurrent(parsed) {
+  const el = document.getElementById('kb-current');
+  if (!parsed || !parsed.bindings.length || !parsed.bindings.some(b => Object.keys(b.bindings || {}).length)) {
+    el.innerHTML = '<div style="font-size:12px;color:var(--text-dim);padding:4px 0 8px">No custom bindings yet — Claude Code is using all defaults. Add one below.</div>';
+    return;
+  }
+  const rows = [];
+  parsed.bindings.forEach((block, bi) => {
+    Object.entries(block.bindings || {}).forEach(([key, action]) => {
+      const known = (KB_CATALOG[block.context] || []).find(x => x.a === action);
+      rows.push(`<tr>
+        <td><span class="badge badge-accent" style="font-size:10px">${escHtml(block.context || '?')}</span></td>
+        <td style="font-family:monospace;font-size:12px;font-weight:600">${escHtml(key)}</td>
+        <td style="font-family:monospace;font-size:12px">${action === null ? '<span class="badge badge-warning" style="font-size:10px">unbound</span>' : escHtml(action)}</td>
+        <td style="font-size:11px;color:var(--text-muted)">${action === null ? 'Default shortcut disabled' : escHtml(known?.t || 'Custom action')}</td>
+        <td><button class="btn btn-danger btn-sm" data-kb-del="${bi}::${escHtml(key)}" style="font-size:10px;padding:2px 8px">✕</button></td>
+      </tr>`);
+    });
+  });
+  el.innerHTML = `<div class="card" style="padding:0;overflow:hidden;margin-bottom:4px"><table style="width:100%">
+    <thead><tr><th>Context</th><th>Key</th><th>Action</th><th>What it does</th><th></th></tr></thead>
+    <tbody>${rows.join('')}</tbody></table></div>`;
+  el.querySelectorAll('[data-kb-del]').forEach(b => {
+    b.onclick = async () => {
+      const [bi, key] = b.dataset.kbDel.split('::');
+      delete parsed.bindings[Number(bi)].bindings[key];
+      parsed.bindings = parsed.bindings.filter(bl => Object.keys(bl.bindings || {}).length);
+      await api('PUT', '/keybindings', { content: JSON.stringify(parsed, null, 2) });
+      toast('Binding removed — applies instantly in Claude Code');
+      loadKeybindings();
+    };
+  });
+}
+
 async function loadKeybindings() {
   const { content, exists } = await api('GET', '/keybindings');
   document.getElementById('keybindings-info').style.display    = exists ? 'none' : 'flex';
   document.getElementById('keybindingsCreateBtn').style.display = exists ? 'none' : 'inline-flex';
-  keybindingsContent = content || JSON.stringify([{ key: 'ctrl+enter', command: 'claude.submit' }], null, 2);
+  keybindingsContent = content || JSON.stringify(KB_SCAFFOLD, null, 2);
+  kbPopulateForm();
+  kbRenderCurrent(exists ? kbParse(content) : null);
   if (!keybindingsEditor && monacoReady) keybindingsEditor = createEditor('keybindings-editor-wrap', 'json', keybindingsContent);
   else if (keybindingsEditor) keybindingsEditor.setValue(keybindingsContent);
   else document.getElementById('keybindings-editor-wrap').innerHTML = '<div style="padding:20px;color:var(--text-muted)">Loading editor…</div>';
 }
-document.getElementById('keybindingsCreateBtn').onclick = () => {
-  document.getElementById('keybindings-info').style.display    = 'none';
-  document.getElementById('keybindingsCreateBtn').style.display = 'none';
+
+document.getElementById('kbAddBtn').onclick = async () => {
+  const context = document.getElementById('kbContext').value;
+  const key = document.getElementById('kbKey').value.trim().toLowerCase();
+  const unbind = document.getElementById('kbUnbind').checked;
+  const action = unbind ? null : document.getElementById('kbAction').value.trim();
+  if (!key) { toast('Enter a keystroke (e.g. ctrl+e)', 'error'); return; }
+  if (['ctrl+c', 'ctrl+d', 'ctrl+m'].includes(key)) { toast(`${key} is reserved by Claude Code and cannot be rebound`, 'error'); return; }
+  if (!unbind && !action) { toast('Pick an action, or check "unbind"', 'error'); return; }
+  const { content, exists } = await api('GET', '/keybindings');
+  const parsed = (exists && kbParse(content)) || { ...KB_SCAFFOLD, bindings: [] };
+  let block = parsed.bindings.find(b => b.context === context);
+  if (!block) { block = { context, bindings: {} }; parsed.bindings.push(block); }
+  block.bindings = block.bindings || {};
+  block.bindings[key] = action;
+  try {
+    await api('PUT', '/keybindings', { content: JSON.stringify(parsed, null, 2) });
+    toast(`${key} → ${action === null ? 'unbound' : action} in ${context} — applies instantly`);
+    document.getElementById('kbKey').value = '';
+    document.getElementById('kbAction').value = '';
+    document.getElementById('kbUnbind').checked = false;
+    loadKeybindings();
+  } catch (e) { toast(e.message, 'error'); }
+};
+
+document.getElementById('keybindingsCreateBtn').onclick = async () => {
+  try {
+    await api('PUT', '/keybindings', { content: JSON.stringify(KB_SCAFFOLD, null, 2) });
+    toast('keybindings.json created with a starter binding (ctrl+e → external editor)');
+    loadKeybindings();
+  } catch (e) { toast(e.message, 'error'); }
 };
 document.getElementById('saveKeybindings').onclick = async () => {
   if (!keybindingsEditor) return;
@@ -5866,6 +6052,7 @@ async function loadWorkflows() {
             <div>${w.components.map(c => `<span class="badge ${WF_TYPE_CLASS[c.type] || 'badge-muted'}">${c.icon} ${c.type}</span>`).join('')}</div>
             <div style="display:flex;gap:5px;flex-shrink:0">
               <button class="btn btn-run btn-sm" data-wf-run="${w.id}" title="Run this workflow one-shot with all permissions">▶ Run</button>
+              <button class="btn btn-secondary btn-sm" data-wf-usage="${w.id}" title="How to invoke it — incl. the no-permissions one-shot command">📖 Usage</button>
               <button class="btn-explain" data-wf-explain="${w.id}" title="Explain with AI">🤖 Explain</button>
             </div>
           </div>
@@ -5901,6 +6088,25 @@ async function loadWorkflows() {
       if (!confirm(`Remove workflow "${btn.dataset.mywfDel}" from this list? The installed skills/agents/hooks stay in place.`)) return;
       try { await api('DELETE', '/workflows/' + encodeURIComponent(btn.dataset.mywfDel)); toast('Workflow removed'); loadWorkflows(); }
       catch (e) { toast(e.message, 'error'); }
+    };
+  });
+  // Pre-built template usage (incl. copyable no-permissions one-shot command)
+  section.querySelectorAll('[data-wf-usage]').forEach(btn => {
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      const w = WORKFLOWS.find(x => x.id === btn.dataset.wfUsage);
+      if (!w) return;
+      const wfLike = {
+        name: w.id, title: w.name, description: w.description,
+        components: w.components.map(c => ({ type: c.type, name: c.name.replace(/\.(mjs|js|py|sh)$/, ''), description: c.desc, event: c.event, matcher: c.matcher })),
+      };
+      document.getElementById('wfUsageTitle').textContent = '📖 ' + w.name + ' — how to use it';
+      const body = document.getElementById('wfUsageBody');
+      body.innerHTML = `
+        <div style="font-size:13px;color:var(--text-muted);margin-bottom:4px">${escHtml(w.description)}</div>
+        ${buildWorkflowUsageHtml(wfLike)}`;
+      wireOneShotCopyButtons(body);
+      document.getElementById('wfUsageModal').classList.add('open');
     };
   });
   section.querySelectorAll('[data-wf-run]').forEach(btn => {

@@ -264,6 +264,23 @@ test('keybindings: invalid JSON -> 400, valid -> ok', async () => {
   assert.equal(data.exists, true);
 });
 
+test('keybindings: official Claude Code format roundtrips intact', async () => {
+  const kb = {
+    $schema: 'https://www.schemastore.org/claude-code-keybindings.json',
+    $docs: 'https://code.claude.com/docs/en/keybindings',
+    bindings: [
+      { context: 'Chat', bindings: { 'ctrl+e': 'chat:externalEditor', 'ctrl+u': null } },
+      { context: 'Global', bindings: { 'ctrl+t': 'app:toggleTodos' } },
+    ],
+  };
+  assert.equal((await s.api('PUT', '/keybindings', { content: JSON.stringify(kb, null, 2) })).status, 200);
+  const { data } = await s.api('GET', '/keybindings');
+  const parsed = JSON.parse(data.content);
+  assert.equal(parsed.bindings.length, 2);
+  assert.equal(parsed.bindings[0].bindings['ctrl+e'], 'chat:externalEditor');
+  assert.strictEqual(parsed.bindings[0].bindings['ctrl+u'], null, 'null unbind entries preserved');
+});
+
 test('overview: counts reflect created artifacts', async () => {
   await s.api('POST', '/skills', { name: 'ov-skill' });
   await s.api('POST', '/agents', { name: 'ov-agent' });

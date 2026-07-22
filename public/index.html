@@ -544,10 +544,56 @@
           <button class="btn btn-primary" id="saveKeybindings">Save</button>
         </div>
       </div>
-      <div id="keybindings-info" class="alert alert-info" style="display:none">
-        keybindings.json does not exist yet. Click "Create File" to start, or just edit and save.
+      <div class="tab-explainer">
+        <div class="tab-explainer-what">Customizes <strong>keyboard shortcuts in the Claude Code terminal UI</strong> via <code>~/.claude/keybindings.json</code> (requires Claude Code ≥ 2.1.18; run <code>/keybindings</code> in Claude to open the same file). Changes apply <strong>instantly</strong> — no restart.</div>
+        <div class="tab-explainer-why">💡 <strong>Why use it:</strong> rebind actions to keys you actually reach for, get vim-style navigation, or unbind defaults that clash with tmux/screen. Every binding lives in a <em>context</em> (Chat, Confirmation, Transcript…) so the same key can do different things in different places.</div>
+        <div class="tab-explainer-ex"><strong>Example:</strong> bind <code>ctrl+e</code> → <code>chat:externalEditor</code> to draft prompts in your $EDITOR, or set <code>ctrl+b</code> → <code>null</code> to unbind it because tmux owns it. Chords work too: <code>ctrl+k ctrl+s</code>.</div>
       </div>
-      <div style="flex:1;min-height:0;height:500px" id="keybindings-editor-wrap"></div>
+
+      <div id="keybindings-info" class="alert alert-info" style="display:none">
+        keybindings.json does not exist yet — add a binding below or click "Create File" for a starter.
+      </div>
+
+      <div style="font-size:12px;color:var(--text-dim);margin:6px 0;font-weight:600;text-transform:uppercase;letter-spacing:.5px">Current bindings</div>
+      <div id="kb-current"></div>
+
+      <div class="card" style="margin:12px 0">
+        <div style="font-weight:650;font-size:13px;margin-bottom:10px">＋ Add a binding</div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+          <div style="min-width:150px">
+            <label class="form-label">Context</label>
+            <select id="kbContext" style="width:100%"></select>
+          </div>
+          <div style="flex:1;min-width:140px">
+            <label class="form-label">Keystroke</label>
+            <input type="text" id="kbKey" placeholder="ctrl+e  ·  shift+tab  ·  ctrl+k ctrl+s">
+          </div>
+          <div style="flex:1.4;min-width:190px">
+            <label class="form-label">Action</label>
+            <input type="text" id="kbAction" list="kbActionList" placeholder="chat:externalEditor">
+            <datalist id="kbActionList"></datalist>
+          </div>
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-muted);padding-bottom:8px">
+            <input type="checkbox" id="kbUnbind"> unbind (set to null)
+          </label>
+          <button class="btn btn-primary" id="kbAddBtn">Add</button>
+        </div>
+        <div id="kbActionHint" style="font-size:11px;color:var(--text-dim);margin-top:6px"></div>
+      </div>
+
+      <details style="margin-bottom:12px">
+        <summary style="cursor:pointer;font-size:12px;color:var(--text-muted)">📚 Reference — contexts, keystroke syntax, reserved keys</summary>
+        <div class="card" style="margin-top:8px;font-size:12px;line-height:1.6">
+          <strong>Keystroke syntax:</strong> modifiers joined with <code>+</code> (<code>ctrl</code>, <code>shift</code>, <code>alt</code>/<code>meta</code>, <code>cmd</code>); chords separated by spaces (<code>ctrl+k ctrl+s</code>); special keys <code>escape enter tab space up down left right backspace delete</code>; a bare uppercase letter implies Shift.<br>
+          <strong>Unbinding:</strong> map a key to <code>null</code> to remove a default.<br>
+          <strong>Reserved (cannot rebind):</strong> <code>Ctrl+C</code> (interrupt), <code>Ctrl+D</code> (exit), <code>Ctrl+M</code> (= Enter).<br>
+          <strong>Terminal conflicts:</strong> <code>Ctrl+B</code> (tmux prefix), <code>Ctrl+A</code> (screen), <code>Ctrl+Z</code> (suspend).<br>
+          <strong>Contexts:</strong> Global · Chat · Autocomplete · Settings · Confirmation · Tabs · Help · Transcript · HistorySearch · Task · ThemePicker · Attachments · Footer · MessageSelector · DiffDialog · ModelPicker · Select · Plugin · Scroll — a binding only fires while its context is active. Full docs: <code>code.claude.com/docs/en/keybindings</code>
+        </div>
+      </details>
+
+      <div style="font-size:12px;color:var(--text-dim);margin:6px 0;font-weight:600;text-transform:uppercase;letter-spacing:.5px">Raw editor</div>
+      <div style="flex:1;min-height:300px;height:380px" id="keybindings-editor-wrap"></div>
     </div>
 
     <!-- ===== EXAMPLES ===== -->
