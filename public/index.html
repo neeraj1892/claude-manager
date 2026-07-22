@@ -192,7 +192,16 @@
         <button class="tab" data-tab="env-vars">Env Vars</button>
         <button class="tab" data-tab="raw-json">Raw JSON</button>
         <button class="tab" data-tab="ai">AI Generation</button>
+        <button class="tab" data-tab="prompts">Prompts</button>
         <button class="tab" data-tab="updates">Updates</button>
+      </div>
+      <div id="settings-tab-prompts" class="tab-content" style="margin-top:16px">
+        <div class="tab-explainer">
+          <div class="tab-explainer-what">Every <strong>system prompt this app sends to the AI</strong> — for generating skills, hooks, workflows, explaining files, designing custom events — listed here and fully editable.</div>
+          <div class="tab-explainer-why">💡 <strong>Why use it:</strong> tune the house style to yours — different output rules, your team's conventions, another language, stricter formats. Your version is used everywhere that feature runs.</div>
+          <div class="tab-explainer-ex"><strong>Example:</strong> edit <em>Skill generation</em> to demand a "## Testing" section in every generated skill — every future generation includes it. Careful: most prompts must keep ending with <code>Request: </code>, and template prompts must keep their <code>{{TOKENS}}</code> (validated on save). Reset restores the built-in anytime.</div>
+        </div>
+        <div id="prompts-list" style="margin-top:14px"></div>
       </div>
       <div id="settings-tab-updates" class="tab-content" style="margin-top:16px">
         <div class="tab-explainer">

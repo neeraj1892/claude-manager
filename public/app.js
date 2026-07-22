@@ -979,8 +979,56 @@ document.getElementById('checkUpdatesBtn').onclick = async () => {
   }
 };
 
+// ===== CUSTOMIZABLE AI PROMPTS =====
+async function loadPromptsList() {
+  const el = document.getElementById('prompts-list');
+  if (!el) return;
+  el.innerHTML = '<div style="padding:16px;color:var(--text-muted);font-size:13px">Loading prompts…</div>';
+  try {
+    const prompts = await api('GET', '/prompts');
+    el.innerHTML = `<div class="list">${prompts.map(p => `
+      <div class="list-row">
+        <span style="font-size:14px">📝</span>
+        <div class="list-main">
+          <div class="list-title">${escHtml(p.label)}
+            ${p.isCustomized ? '<span class="badge badge-warning" style="font-size:10px;margin-left:6px" title="You have edited this prompt — the built-in default is not being used">✎ customized</span>' : ''}
+          </div>
+          <div class="list-sub">Used by: ${escHtml(p.usedBy)}${p.tokens.length ? ` · must keep: ${p.tokens.map(escHtml).join(' ')}` : ''}</div>
+        </div>
+        <button class="icon-act" data-prompt-edit="${escHtml(p.id)}" title="Edit this prompt">✎</button>
+        ${p.isCustomized ? `<button class="icon-act danger" data-prompt-reset="${escHtml(p.id)}" title="Reset to the built-in default">↺</button>` : ''}
+      </div>`).join('')}</div>`;
+
+    el.querySelectorAll('[data-prompt-edit]').forEach(b => {
+      b.onclick = () => {
+        const p = prompts.find(x => x.id === b.dataset.promptEdit);
+        if (!p) return;
+        if (p.tokens.length) toast('Template prompt — keep these placeholders: ' + p.tokens.join(' '), 'info');
+        if (p.note) toast(p.note, 'info');
+        openOverlay(`Prompt: ${p.label}`, p.current, 'markdown', null, async (content) => {
+          await api('PUT', '/prompts/' + encodeURIComponent(p.id), { content });
+          toast(`"${p.label}" prompt saved — used from the next generation on`);
+          loadPromptsList();
+        });
+      };
+    });
+    el.querySelectorAll('[data-prompt-reset]').forEach(b => {
+      b.onclick = async () => {
+        const p = prompts.find(x => x.id === b.dataset.promptReset);
+        if (!await confirmDlg('Reset Prompt', `Restore the built-in default for "${p?.label}"? Your customized version will be discarded.`)) return;
+        await api('DELETE', '/prompts/' + encodeURIComponent(b.dataset.promptReset));
+        toast('Prompt reset to the built-in default');
+        loadPromptsList();
+      };
+    });
+  } catch (e) {
+    el.innerHTML = `<div style="padding:16px;color:var(--danger);font-size:13px">${escHtml(e.message)}</div>`;
+  }
+}
+
 async function loadSettings() {
   loadSettingsInspector();
+  loadPromptsList();
   settingsData = await api('GET', '/settings');
   document.getElementById('settings-model').value = settingsData.model || '';
   renderHooksInSettings(settingsData.hooks || {});

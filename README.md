@@ -78,6 +78,9 @@ The folder choice persists in `claude-manager.config.json` (gitignored). Your Op
 | **Examples** | Annotated real-world examples — copy or install with one click |
 | **CLAUDE.md / Settings / Keybindings** | Direct editors |
 
+### Customizable prompts
+Settings → Prompts lists every system prompt the app sends to the AI (skill/agent/hook/command generation, improve, explain, workflow planning, compose, custom events, settings assistant). Edit any of them to impose your own conventions — your version is used everywhere that feature runs; template prompts keep their `{{TOKENS}}` (validated on save); reset restores the built-in.
+
 ### Configuring AI providers
 Any modal with a provider picker (Generate, Run, Compose) auto-detects: if the Claude CLI is available it's preselected; otherwise OpenRouter is selected with its key + model fields shown inline. Keys are saved once and reused everywhere.
 
@@ -87,7 +90,7 @@ Any modal with a provider picker (Generate, Run, Compose) auto-detects: if the C
 npm test
 ```
 
-192 tests (Node's built-in `node --test`) covering every endpoint and scenario. Each test file boots an isolated server with its own temp `.claude` folder, temp `HOME`, isolated config, a local fixture marketplace/OpenRouter endpoint, and a fake `claude` CLI shim that records invocations — no network or real Claude Code install needed. See [`tests/README.md`](tests/README.md) for the full bug-fix history and scenario list.
+198 tests (Node's built-in `node --test`) covering every endpoint and scenario. Each test file boots an isolated server with its own temp `.claude` folder, temp `HOME`, isolated config, a local fixture marketplace/OpenRouter endpoint, and a fake `claude` CLI shim that records invocations — no network or real Claude Code install needed. See [`tests/README.md`](tests/README.md) for the full bug-fix history and scenario list.
 
 ## Security notes
 

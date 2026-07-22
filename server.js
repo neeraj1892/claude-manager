@@ -882,7 +882,7 @@ app.post('/api/ai/suggest-settings', async (req, res) => {
   const { request, provider } = req.body;
   if (!request?.trim()) return res.status(400).json({ error: 'request is required' });
   const current = readJson(join(claudeDir, 'settings.json'));
-  const fullPrompt = SUGGEST_SETTINGS_PROMPT + JSON.stringify(current, null, 2)
+  const fullPrompt = getPrompt('suggest-settings') + JSON.stringify(current, null, 2)
     + '\n\nUser request: ' + request.trim();
   try {
     let raw;
@@ -991,7 +991,7 @@ app.get('/api/skills/creators', (req, res) => {
     } catch {}
   }
   // 3) Built-in fallback methodology (always available)
-  creators.push({ name: 'skill-creator (Built-in)', content: OFFICIAL_SKILL_CREATOR_CONTENT, official: true, builtin: true });
+  creators.push({ name: 'skill-creator (Built-in)', content: getPrompt('skill-creator-builtin'), official: true, builtin: true });
   res.json(creators);
 });
 
@@ -1470,9 +1470,9 @@ app.post('/api/ai/generate-skill', async (req, res) => {
       ? creatorContent.trimEnd() + ' ' + prompt.trim()
       : `You are generating a Claude Code ${type} using the methodology below.\n\n${creatorContent.trim()}\n\n========\nCRITICAL: Your response must be ONLY the raw file content with zero preamble or explanation.\nFor skill/agent the very first characters must be "---" (YAML frontmatter). Do NOT write anything before it.\nFor hook the very first line must be a shebang like "#!/usr/bin/env node".\n\nRequest: ${prompt.trim()}`;
   } else {
-    const hookPromptMap = { '.mjs': HOOK_SYSTEM_PROMPT, '.js': HOOK_SYSTEM_PROMPT, '.py': HOOK_SYSTEM_PROMPT_PYTHON, '.sh': HOOK_SYSTEM_PROMPT_BASH, '.bash': HOOK_SYSTEM_PROMPT_BASH };
-    const promptMap = { skill: SKILL_SYSTEM_PROMPT, agent: AGENT_SYSTEM_PROMPT, command: COMMAND_SYSTEM_PROMPT, hook: (hookLang && hookPromptMap[hookLang]) || HOOK_SYSTEM_PROMPT };
-    fullPrompt = (promptMap[type] || SKILL_SYSTEM_PROMPT) + prompt.trim();
+    const hookPromptMap = { '.mjs': 'hook-generate-node', '.js': 'hook-generate-node', '.py': 'hook-generate-python', '.sh': 'hook-generate-bash', '.bash': 'hook-generate-bash' };
+    const promptMap = { skill: 'skill-generate', agent: 'agent-generate', command: 'command-generate', hook: (hookLang && hookPromptMap[hookLang]) || 'hook-generate-node' };
+    fullPrompt = getPrompt(promptMap[type] || 'skill-generate') + prompt.trim();
   }
   try {
     let content;
@@ -1616,14 +1616,7 @@ Output ONLY the raw file content — start with "---" (YAML frontmatter). No exp
 Request: `;
 
 
-const IMPROVE_PROMPT = (type, feedback) => {
-  const feedbackSection = feedback
-    ? `User feedback (what needs fixing/improving):\n${feedback}\n\nIncorporate this feedback precisely.\n\n`
-    : 'Apply best practices: sharpen trigger phrases, tighten steps (max 7), remove filler, improve the output example to be concrete and realistic.\n\n';
-  const validation = (type === 'skill' || type === 'agent')
-    ? 'Output ONLY the raw improved file content. Start with "---" (YAML frontmatter). No explanation.'
-    : 'Output ONLY the raw improved code. Start with "#!/usr/bin/env node". No explanation.';
-  return `You are an expert Claude Code ${type} author improving an existing ${type}.
+const IMPROVE_PROMPT_TEMPLATE = `You are an expert Claude Code {{TYPE}} author improving an existing {{TYPE}}.
 
 Principles to apply:
 - Pareto: clear trigger phrases + concrete numbered steps = 80% of value. Maximise these.
@@ -1632,10 +1625,23 @@ Principles to apply:
 - Kidlin: if a step can't be written simply, rewrite it until it can.
 - Humphrey: show a realistic output example so the user sees exactly what they'll get.
 
-${feedbackSection}${validation}
+{{FEEDBACK}}{{VALIDATION}}
 
-ORIGINAL ${type.toUpperCase()} TO IMPROVE:
+ORIGINAL {{TYPE_UPPER}} TO IMPROVE:
 `;
+
+const IMPROVE_PROMPT = (type, feedback) => {
+  const feedbackSection = feedback
+    ? `User feedback (what needs fixing/improving):\n${feedback}\n\nIncorporate this feedback precisely.\n\n`
+    : 'Apply best practices: sharpen trigger phrases, tighten steps (max 7), remove filler, improve the output example to be concrete and realistic.\n\n';
+  const validation = (type === 'skill' || type === 'agent')
+    ? 'Output ONLY the raw improved file content. Start with "---" (YAML frontmatter). No explanation.'
+    : 'Output ONLY the raw improved code. Start with "#!/usr/bin/env node". No explanation.';
+  return getPrompt('improve')
+    .replaceAll('{{TYPE_UPPER}}', type.toUpperCase())
+    .replaceAll('{{TYPE}}', type)
+    .replaceAll('{{FEEDBACK}}', feedbackSection)
+    .replaceAll('{{VALIDATION}}', validation);
 };
 
 // (The /api/skills/creators route is registered above /api/skills/:name — see Skills section.)
@@ -1754,7 +1760,7 @@ app.post('/api/ai/generate-workflow-plan', async (req, res) => {
   let extras = '';
   try { extras = await buildAiContextBlocks(req.body); }
   catch (e) { return res.status(e.status || 500).json({ error: e.message }); }
-  const fullPrompt = WORKFLOW_PLAN_PROMPT + contextBlock + extras + '\nGoal: ' + goal.trim();
+  const fullPrompt = getPrompt('workflow-plan') + contextBlock + extras + '\nGoal: ' + goal.trim();
   try {
     let raw;
     if (provider === 'openrouter') {
@@ -1877,7 +1883,7 @@ app.post('/api/ai/compose-workflow', async (req, res) => {
   let extras = '';
   try { extras = await buildAiContextBlocks(req.body); }
   catch (e) { return res.status(e.status || 500).json({ error: e.message }); }
-  const fullPrompt = COMPOSE_PROMPT
+  const fullPrompt = getPrompt('compose-workflow')
     + '\nINVENTORY OF INSTALLED RESOURCES:\n' + JSON.stringify(inventory, null, 1)
     + extras
     + '\n\nDesired workflow: ' + goal.trim();
@@ -2021,7 +2027,7 @@ app.post('/api/ai/generate-workflow', async (req, res) => {
 app.post('/api/ai/explain', async (req, res) => {
   const { content, type, provider } = req.body;
   if (!content?.trim()) return res.status(400).json({ error: 'content is required' });
-  const fullPrompt = EXPLAIN_SYSTEM_PROMPT + `[Type: ${type || 'unknown'}]\n\n${content.trim()}`;
+  const fullPrompt = getPrompt('explain') + `[Type: ${type || 'unknown'}]\n\n${content.trim()}`;
   try {
     let result;
     if (provider === 'openrouter') {
@@ -3136,7 +3142,7 @@ const CE_LANG_RULES = {
   '.ps1': 'PowerShell (.ps1): starts with a comment header line; reads [Console]::In.ReadToEnd(); ConvertFrom-Json inside try/catch; exit 0 on every path. Requires pwsh.',
 };
 
-const CUSTOM_EVENT_PROMPT = (lang = '.mjs') => `You are a Claude Code custom-event designer.
+const CUSTOM_EVENT_PROMPT_TEMPLATE = `You are a Claude Code custom-event designer.
 
 Claude Code fires only its built-in lifecycle events. A CUSTOM EVENT is a
 derived event: a hook attached to the correct built-in event whose script
@@ -3147,15 +3153,15 @@ Given the user's description, output ONLY raw JSON — no prose, no fences:
 {
   "name": "CamelCaseEventName",
   "description": "One sentence: when this custom event fires.",
-  "underlyingEvent": "one of: ${BUILTIN_HOOK_EVENTS.join(', ')}",
+  "underlyingEvent": "one of: {{EVENTS}}",
   "matcher": "tool-name regex for PreToolUse/PostToolUse/PostToolUseFailure/Permission* (e.g. \\"Bash\\", \\"Write|Edit\\"); empty string otherwise",
-  "filename": "kebab-case-name${lang}",
+  "filename": "kebab-case-name{{EXT}}",
   "how": "2-3 sentences: how detection works and what the action does.",
   "hookScript": "the complete script"
 }
 
 hookScript rules — violations invalidate the output:
-- LANGUAGE: ${CE_LANG_RULES[lang] || CE_LANG_RULES['.mjs']} The filename MUST end with ${lang}.
+- LANGUAGE: {{LANG_RULES}} The filename MUST end with {{EXT}}.
 - The FIRST comment block documents: CUSTOM EVENT <name>, fires when, underlying event, action taken.
 - Detects the condition precisely; when it does NOT match, exit 0 immediately (the custom event simply did not fire).
 - FAIL-OPEN: all logic inside try/catch, exit 0 in catch — a crashing hook must never block Claude.
@@ -3163,6 +3169,11 @@ hookScript rules — violations invalidate the output:
 - Prefix any user-visible reason/log line with the event name in brackets so it is recognizable.
 
 Request: `;
+
+const CUSTOM_EVENT_PROMPT = (lang = '.mjs') => getPrompt('custom-event')
+  .replaceAll('{{EVENTS}}', BUILTIN_HOOK_EVENTS.join(', '))
+  .replaceAll('{{LANG_RULES}}', CE_LANG_RULES[lang] || CE_LANG_RULES['.mjs'])
+  .replaceAll('{{EXT}}', lang);
 
 app.post('/api/ai/create-custom-event', async (req, res) => {
   const { description, action = '', provider, lang: rawLang } = req.body;
@@ -3328,6 +3339,68 @@ app.delete('/api/workflows/:name', (req, res) => {
   if (cfg.workflows.length === before) return res.status(404).json({ error: 'Workflow not found' });
   saveConfig(cfg);
   res.json({ ok: true });
+});
+
+// --- API: Customizable AI prompts ---
+// Every system prompt the app sends to an AI is registered here and can be
+// overridden by the user (Settings → Prompts). Overrides persist in the
+// config; templates must keep their {{TOKENS}} (validated on save).
+
+const PROMPT_DEFS = {
+  'skill-generate':        { label: 'Skill generation',                usedBy: 'Generate with AI → Skill',                       def: () => SKILL_SYSTEM_PROMPT,          note: 'The user request is appended after it — keep it ending with "Request: ".' },
+  'agent-generate':        { label: 'Agent generation',                usedBy: 'Generate with AI → Agent',                       def: () => AGENT_SYSTEM_PROMPT,          note: 'Keep it ending with "Request: ".' },
+  'command-generate':      { label: 'Command generation',              usedBy: 'Generate with AI → Command; Commands → ✨',      def: () => COMMAND_SYSTEM_PROMPT,        note: 'Keep it ending with "Request: ".' },
+  'hook-generate-node':    { label: 'Hook generation — Node.js',       usedBy: 'Generate with AI → Hook (.mjs/.js); Add-Hook ✨', def: () => HOOK_SYSTEM_PROMPT,           note: 'Keep it ending with "Request: ".' },
+  'hook-generate-python':  { label: 'Hook generation — Python',        usedBy: 'Generate with AI → Hook (.py)',                  def: () => HOOK_SYSTEM_PROMPT_PYTHON,    note: 'Keep it ending with "Request: ".' },
+  'hook-generate-bash':    { label: 'Hook generation — Bash',          usedBy: 'Generate with AI → Hook (.sh)',                  def: () => HOOK_SYSTEM_PROMPT_BASH,      note: 'Keep it ending with "Request: ".' },
+  'skill-creator-builtin': { label: 'Built-in skill-creator methodology', usedBy: 'Generate → skill-creator method (when none installed)', def: () => OFFICIAL_SKILL_CREATOR_CONTENT, note: 'Keep it ending with "Request: ".' },
+  'improve':               { label: 'Improve with AI',                 usedBy: '✨ Improve on skills/agents/hooks',              def: () => IMPROVE_PROMPT_TEMPLATE,      tokens: ['{{TYPE}}', '{{TYPE_UPPER}}', '{{FEEDBACK}}', '{{VALIDATION}}'] },
+  'explain':               { label: 'Explain with AI',                 usedBy: '🤖 Explain everywhere',                          def: () => EXPLAIN_SYSTEM_PROMPT },
+  'workflow-plan':         { label: 'Workflow planning',               usedBy: 'Workflows → ✨ Create with AI (plan step)',      def: () => WORKFLOW_PLAN_PROMPT },
+  'compose-workflow':      { label: 'Compose from installed',          usedBy: 'Workflows → 🧬 Compose from Installed',          def: () => COMPOSE_PROMPT },
+  'custom-event':          { label: 'Custom event designer',           usedBy: 'Hooks → 🧬 Create Custom Event',                 def: () => CUSTOM_EVENT_PROMPT_TEMPLATE, tokens: ['{{EVENTS}}', '{{LANG_RULES}}', '{{EXT}}'] },
+  'suggest-settings':      { label: 'Settings assistant',              usedBy: 'Settings → ✨ Add with AI',                      def: () => SUGGEST_SETTINGS_PROMPT },
+};
+
+function getPrompt(id) {
+  const overrides = loadConfig().promptOverrides || {};
+  return (typeof overrides[id] === 'string' && overrides[id].trim()) ? overrides[id] : PROMPT_DEFS[id].def();
+}
+
+app.get('/api/prompts', (req, res) => {
+  const overrides = loadConfig().promptOverrides || {};
+  res.json(Object.entries(PROMPT_DEFS).map(([id, d]) => ({
+    id,
+    label: d.label,
+    usedBy: d.usedBy,
+    note: d.note || '',
+    tokens: d.tokens || [],
+    isCustomized: !!(overrides[id] && overrides[id].trim()),
+    default: d.def(),
+    current: getPrompt(id),
+  })));
+});
+
+app.put('/api/prompts/:id', (req, res) => {
+  const def = PROMPT_DEFS[req.params.id];
+  if (!def) return res.status(404).json({ error: 'Unknown prompt id' });
+  const { content } = req.body;
+  if (typeof content !== 'string' || !content.trim()) return res.status(400).json({ error: 'content is required (use reset to restore the default)' });
+  const missing = (def.tokens || []).filter(t => !content.includes(t));
+  if (missing.length) return res.status(400).json({ error: `This prompt is a template — it must keep the placeholder${missing.length > 1 ? 's' : ''}: ${missing.join(', ')}` });
+  const cfg = loadConfig();
+  cfg.promptOverrides = cfg.promptOverrides || {};
+  cfg.promptOverrides[req.params.id] = content;
+  saveConfig(cfg);
+  res.json({ ok: true, isCustomized: true });
+});
+
+app.delete('/api/prompts/:id', (req, res) => {
+  if (!PROMPT_DEFS[req.params.id]) return res.status(404).json({ error: 'Unknown prompt id' });
+  const cfg = loadConfig();
+  if (cfg.promptOverrides) delete cfg.promptOverrides[req.params.id];
+  saveConfig(cfg);
+  res.json({ ok: true, isCustomized: false });
 });
 
 // --- Start ---
