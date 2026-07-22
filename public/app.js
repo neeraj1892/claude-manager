@@ -1220,7 +1220,7 @@ async function renderCustomEvents() {
       try { await api('DELETE', '/custom-events/' + encodeURIComponent(b.dataset.ceDel)); toast('Custom event removed'); loadHooks(); }
       catch (e) { toast(e.message, 'error'); }
     });
-    return events.length;
+    return { count: events.length, unhealthy: events.some(ev => !ev.fileExists || !ev.wired) };
   } catch (e) {
     // Kidlin: an error must never look like an empty list
     el.innerHTML = `<div style="font-size:12px;color:var(--danger);padding:4px 0 8px">Couldn't load custom events (${escHtml(e.message)}) — <button class="link-btn" onclick="loadHooks()">retry</button></div>`;
@@ -2889,19 +2889,55 @@ async function runWfInstall() {
 }
 
 // ===== SHARED CARD GRID RENDERER =====
-function renderItemGrid(gridId, items, type, icon, onEdit, onDelete, useDisplayName = false) {
+function renderItemGrid(gridId, items, type, icon, onEdit, onDelete, useDisplayName = false, isFilterPass = false) {
   const grid = document.getElementById(gridId);
+  if (!isFilterPass) grid._ctx = { items, type, icon, onEdit, onDelete, useDisplayName };
+
+  // Findability: with many items, offer a filter box (created once, lives
+  // OUTSIDE the grid so typing never loses focus on re-render).
+  if (!isFilterPass) {
+    let wrap = document.getElementById(gridId + '-filter');
+    if (items.length > 8) {
+      if (!wrap) {
+        wrap = document.createElement('div');
+        wrap.id = gridId + '-filter';
+        wrap.innerHTML = `<input type="search" placeholder="⌕ Filter ${type}s by name or description…" style="max-width:340px;width:100%">`;
+        grid.parentNode.insertBefore(wrap, grid);
+        wrap.querySelector('input').addEventListener('input', (e) => {
+          const q = e.target.value.trim().toLowerCase();
+          const c = grid._ctx;
+          const subset = !q ? c.items : c.items.filter(it =>
+            it.name.toLowerCase().includes(q) || (it.description || '').toLowerCase().includes(q));
+          renderItemGrid(gridId, subset, c.type, c.icon, c.onEdit, c.onDelete, c.useDisplayName, true);
+        });
+      }
+      wrap.style.display = '';
+    } else if (wrap) {
+      wrap.style.display = 'none';
+    }
+  }
+
   if (!items.length) {
+    if (isFilterPass) {
+      grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1"><p>No ${type}s match your filter.</p></div>`;
+      return;
+    }
+    // Humphrey: an empty state should invite the first move, not just describe absence
     const labels = { skill: 'skill', agent: 'agent', command: 'command' };
     const descs = {
-      skill:   'Skills extend Claude with reusable workflows and knowledge. Add a <code>trigger</code> field to invoke via <code>/name</code> in chat.',
-      agent:   'Agents are specialised Claude instances with their own system prompt, model, and tool restrictions — spawnable from the main session.',
+      skill:   'Skills extend Claude with reusable workflows and knowledge — applied automatically when your request matches, or via <code>/name</code>.',
+      agent:   'Agents are specialised Claude instances with their own system prompt, model, and tool restrictions.',
       command: 'Commands create <code>/slash-commands</code>: markdown files whose content Claude follows when you type the command name.',
     };
     grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1">
       <div class="empty-icon">${icon}</div>
       <h3>No ${labels[type] || type}s yet</h3>
       <p>${descs[type] || ''}</p>
+      <div style="display:flex;gap:8px;justify-content:center;margin-top:14px;flex-wrap:wrap">
+        <button class="btn btn-primary" onclick="showSkillGenerator('${type}')">✨ Describe one — AI builds it</button>
+        ${type !== 'command' ? `<button class="btn btn-secondary" onclick="document.querySelector('[data-${type}-tab=store]')?.click()">🏪 Browse the ${type} store</button>` : ''}
+        <button class="btn btn-secondary" onclick="navigate('examples')">📚 See a worked example</button>
+      </div>
     </div>`;
     return;
   }
