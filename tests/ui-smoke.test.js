@@ -95,12 +95,24 @@ test('manual command respects the shell toggle (bash heredoc vs PowerShell here-
   w.eval("setShellPref('bash'); refreshManualRunCmd()");
   let cmd = w.document.getElementById('runManualCmd').value;
   assert.ok(cmd.includes("<< 'PROMPT'"), 'bash uses heredoc');
-  assert.ok(cmd.startsWith('cd '), 'bash includes cd');
+  assert.ok(cmd.startsWith("mkdir -p 'claude-runs' && claude -p"), 'no cd by default — runs in the current folder: ' + cmd.split('\n')[0]);
+  w.document.getElementById('runCwd').value = '~/proj';
+  w.eval('refreshManualRunCmd()');
+  cmd = w.document.getElementById('runManualCmd').value;
+  assert.ok(cmd.startsWith('cd ~/proj && '), 'explicit working directory still gets a cd');
+  w.document.getElementById('runCwd').value = '';
   w.eval("setShellPref('powershell'); refreshManualRunCmd()");
   cmd = w.document.getElementById('runManualCmd').value;
   assert.ok(cmd.includes("@'"), 'PowerShell here-string');
   assert.ok(cmd.includes('Out-File -Encoding utf8'), 'PowerShell-safe redirect');
+  assert.ok(!cmd.startsWith('cd '), 'no cd by default in PS either');
+  w.document.getElementById('runCwd').value = '~/proj';
+  w.eval('refreshManualRunCmd()');
+  cmd = w.document.getElementById('runManualCmd').value;
   assert.ok(cmd.includes('$HOME'), '~ paths translated for PowerShell');
+  w.document.getElementById('runCwd').value = '';
+  w.eval('refreshManualRunCmd()');
+  cmd = w.document.getElementById('runManualCmd').value;
   assert.ok(!cmd.includes('<< '), 'no heredoc leaks into PS');
   w.eval("setShellPref('bash')");
 });
@@ -110,6 +122,8 @@ test('portable command: one string valid in bash+zsh+PowerShell; honest refusal 
   const cmd = w.eval(`buildPortableCommand(['/plan x', 'line two'], '~', 'claude-runs/out.jsonl', 'sonnet')`);
   assert.ok(cmd.startsWith('cd ~ ; mkdir -p claude-runs ; claude -p '),
     'cd BEFORE mkdir so a relative output dir lands in the working directory');
+  const noCwd = w.eval(`buildPortableCommand(['/plan x'], '', 'claude-runs/out.jsonl', '')`);
+  assert.ok(noCwd.startsWith('mkdir -p claude-runs ; claude -p '), 'blank cwd → no cd, runs in the current folder');
   assert.ok(cmd.includes("'/plan x\nline two'"), 'prompt is a single-quoted literal (identical semantics in all three)');
   assert.ok(cmd.includes('--model sonnet'), 'model pin carried');
   assert.ok(!cmd.includes('<<') && !cmd.includes('\\\n') && !cmd.includes('`'), 'no heredoc, no bash/PS-only continuations');

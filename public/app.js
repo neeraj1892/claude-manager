@@ -4923,7 +4923,7 @@ function buildManualRunCmd() {
   const expected = document.getElementById('runExpected')?.value.trim() || '';
   const file = document.getElementById('runOutputFile').value.trim() || 'run-output.jsonl';
   const model = document.getElementById('runCliModel')?.value || '';
-  const cwd = document.getElementById('runCwd')?.value.trim() || '~';
+  const cwd = document.getElementById('runCwd')?.value.trim() || ''; // blank = current folder, no cd
 
   // Prompt as clean lines — the heredoc removes all quoting pitfalls
   const promptLines = [];
@@ -4956,8 +4956,9 @@ function buildPortableCommand(promptLines, cwd, file, model) {
     ].join('\n');
   }
   const dir = String(file).includes('/') ? String(file).replace(/\/[^/]*$/, '') : '';
-  // cd FIRST so a relative output dir is created inside the working directory
-  return `cd ${cwd} ; ${dir ? `mkdir -p ${dir} ; ` : ''}claude -p '${prompt}' --dangerously-skip-permissions --output-format stream-json --verbose${model ? ` --model ${model}` : ''} > ${file}`;
+  // cd only when a directory was chosen (blank = run right where the terminal is);
+  // cd comes first so a relative output dir is created inside the working directory
+  return `${cwd ? `cd ${cwd} ; ` : ''}${dir ? `mkdir -p ${dir} ; ` : ''}claude -p '${prompt}' --dangerously-skip-permissions --output-format stream-json --verbose${model ? ` --model ${model}` : ''} > ${file}`;
 }
 
 // bash/zsh: heredoc prompt, backslash continuations, ~ kept expandable
@@ -4973,8 +4974,9 @@ function buildBashCommand(promptLines, cwd, file, model) {
   while (promptLines.some(l => String(l).trim() === delim)) delim = 'PROMPT_END_' + n++;
   // Create the output dir — a redirect into a missing folder fails
   const dir = String(file).includes('/') ? String(file).replace(/\/[^/]*$/, '') : '';
+  const pre = [...(cwd ? [`cd ${qp(cwd)}`] : []), ...(dir ? [`mkdir -p ${qp(dir)}`] : [])];
   return [
-    `cd ${qp(cwd)}${dir ? ` && mkdir -p ${qp(dir)}` : ''} && claude -p \\`,
+    `${pre.length ? pre.join(' && ') + ' && ' : ''}claude -p \\`,
     `  --dangerously-skip-permissions \\`,
     `  --output-format stream-json --verbose \\`,
     ...(model ? [`  --model ${model} \\`] : []),
@@ -4999,7 +5001,7 @@ function buildPsCommand(promptLines, cwd, file, model) {
   // Create the output dir — Out-File into a missing folder fails
   const dir = String(file).match(/^(.*)[\\/][^\\/]*$/)?.[1] || '';
   return [
-    `cd ${qpsPath(cwd)}`,
+    ...(cwd ? [`cd ${qpsPath(cwd)}`] : []),
     ...(dir ? [`New-Item -ItemType Directory -Force -Path ${qpsPath(dir)} | Out-Null`] : []),
     `@'`,
     ...promptLines,
@@ -5034,7 +5036,7 @@ async function openRunModal(kind, name, defaultTask) {
   document.getElementById('runTask').value = defaultTask || '';
   document.getElementById('runExpected').value = '';
   document.getElementById('runCliModel').value = '';
-  document.getElementById('runCwd').value = '~';
+  document.getElementById('runCwd').value = ''; // blank = current folder
   const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
   // Relative to the working directory — the run output lives next to the work
   document.getElementById('runOutputFile').value = `claude-runs/${name.toLowerCase().replace(/[^a-z0-9-]+/g, '-')}-${stamp}.jsonl`;
