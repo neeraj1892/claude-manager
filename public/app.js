@@ -654,11 +654,9 @@ function setFolderBanner(valid, path) {
 // carried a stale 'bash' forever — ignore it).
 let _shellPref = localStorage.getItem('cm-shell-v2') || null;
 
-function deriveShellDefault(ua, serverPlatform) {
-  if (/Windows/i.test(ua || '')) return 'powershell';
-  if (/Mac|Linux|X11|CrOS/i.test(ua || '')) return 'bash';
-  return serverPlatform === 'win32' ? 'powershell' : 'bash';
-}
+// Portable works in bash, zsh, and PowerShell alike, so it's the default —
+// no OS detection can know which machine's terminal the user will paste into.
+function deriveShellDefault() { return 'portable'; }
 window.deriveShellDefault = deriveShellDefault;
 
 async function checkFolderValid() {
@@ -4958,9 +4956,8 @@ function buildPortableCommand(promptLines, cwd, file, model) {
     ].join('\n');
   }
   const dir = String(file).includes('/') ? String(file).replace(/\/[^/]*$/, '') : '';
-  return [
-    `${dir ? `mkdir -p ${dir} ; ` : ''}cd ${cwd} ; claude -p '${prompt}' --dangerously-skip-permissions --output-format stream-json --verbose${model ? ` --model ${model}` : ''} > ${file}`,
-  ].join('\n');
+  // cd FIRST so a relative output dir is created inside the working directory
+  return `cd ${cwd} ; ${dir ? `mkdir -p ${dir} ; ` : ''}claude -p '${prompt}' --dangerously-skip-permissions --output-format stream-json --verbose${model ? ` --model ${model}` : ''} > ${file}`;
 }
 
 // bash/zsh: heredoc prompt, backslash continuations, ~ kept expandable
@@ -5039,7 +5036,8 @@ async function openRunModal(kind, name, defaultTask) {
   document.getElementById('runCliModel').value = '';
   document.getElementById('runCwd').value = '~';
   const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
-  document.getElementById('runOutputFile').value = `~/claude-runs/${name.toLowerCase().replace(/[^a-z0-9-]+/g, '-')}-${stamp}.jsonl`;
+  // Relative to the working directory — the run output lives next to the work
+  document.getElementById('runOutputFile').value = `claude-runs/${name.toLowerCase().replace(/[^a-z0-9-]+/g, '-')}-${stamp}.jsonl`;
   document.getElementById('runModalSetup').style.display = '';
   document.getElementById('runModalLive').style.display = 'none';
   document.getElementById('runInfoBox').style.display = 'none';

@@ -107,8 +107,9 @@ test('manual command respects the shell toggle (bash heredoc vs PowerShell here-
 
 test('portable command: one string valid in bash+zsh+PowerShell; honest refusal on apostrophes', (t) => {
   if (skipIfNoDom(t)) return;
-  const cmd = w.eval(`buildPortableCommand(['/plan x', 'line two'], '~', '~/claude-runs/out.jsonl', 'sonnet')`);
-  assert.ok(cmd.startsWith('mkdir -p ~/claude-runs ; cd ~ ; claude -p '), 'mkdir/cd/claude chained with ; (works in all three shells)');
+  const cmd = w.eval(`buildPortableCommand(['/plan x', 'line two'], '~', 'claude-runs/out.jsonl', 'sonnet')`);
+  assert.ok(cmd.startsWith('cd ~ ; mkdir -p claude-runs ; claude -p '),
+    'cd BEFORE mkdir so a relative output dir lands in the working directory');
   assert.ok(cmd.includes("'/plan x\nline two'"), 'prompt is a single-quoted literal (identical semantics in all three)');
   assert.ok(cmd.includes('--model sonnet'), 'model pin carried');
   assert.ok(!cmd.includes('<<') && !cmd.includes('\\\n') && !cmd.includes('`'), 'no heredoc, no bash/PS-only continuations');
@@ -132,15 +133,9 @@ test('REGRESSION: computed shell default never persists; only explicit clicks do
   w.eval("setShellPref('bash')");
 });
 
-test('shell default follows the CLIENT OS (terminal is on the browser machine)', (t) => {
+test('shell default is Portable — no OS detection can know the paste target', (t) => {
   if (skipIfNoDom(t)) return;
-  const d = w.deriveShellDefault;
-  assert.equal(d('Mozilla/5.0 (Windows NT 10.0; Win64; x64)', 'linux'), 'powershell',
-    'Windows browser + linux/mac server → PowerShell (the reported bug)');
-  assert.equal(d('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)', 'win32'), 'bash');
-  assert.equal(d('Mozilla/5.0 (X11; Linux x86_64)', 'win32'), 'bash');
-  assert.equal(d('', 'win32'), 'powershell', 'unknown UA falls back to server platform');
-  assert.equal(d('', 'darwin'), 'bash');
+  assert.equal(w.deriveShellDefault(), 'portable');
 });
 
 test('manual command: output dir created, heredoc delimiter collision-proof', (t) => {

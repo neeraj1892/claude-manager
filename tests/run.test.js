@@ -125,6 +125,17 @@ test('skill run: streams stream-json events into the chosen JSONL file', async (
   assert.equal(prompt, '/my-skill do the thing');
 });
 
+test('relative outputFile resolves against the run cwd, not the server cwd', async () => {
+  const r = await s.api('POST', '/run/start', {
+    kind: 'skill', name: 'my-skill', task: 'x', outputFile: 'claude-runs/rel-run.jsonl', cwd: s.home,
+  });
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+  assert.equal(r.data.file, join(s.home, 'claude-runs', 'rel-run.jsonl'),
+    'relative path lands inside the chosen working directory');
+  const done = await waitForRun(r.data.id);
+  assert.ok(existsSync(done.file), 'JSONL created inside cwd/claude-runs');
+});
+
 test('agent run: prompt points at the agent definition file', async () => {
   const r = await s.api('POST', '/run/start', {
     kind: 'agent', name: 'reviewer', task: 'review src/', outputFile: join(s.home, 'runs', 'agent.jsonl'), cwd: s.home,

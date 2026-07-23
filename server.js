@@ -3060,10 +3060,13 @@ app.post('/api/run/start', (req, res) => {
   if (!RUN_KINDS.includes(kind)) return res.status(400).json({ error: 'kind must be one of: ' + RUN_KINDS.join(', ') });
   if (!outputFile?.trim()) return res.status(400).json({ error: 'outputFile is required — where should the JSONL stream be written?' });
 
-  let file = resolve(expandHome(outputFile.trim()));
-  if (!/\.jsonl$/i.test(file)) file += '.jsonl';
   let workDir = cwd?.trim() ? resolve(expandHome(cwd.trim())) : homedir();
   if (!existsSync(workDir)) return res.status(400).json({ error: 'Working directory not found: ' + workDir });
+  // Relative output paths land in the run's working directory (like the manual
+  // command does after its cd) — not in wherever the server was started.
+  const expandedOut = expandHome(outputFile.trim());
+  let file = path.isAbsolute(expandedOut) ? resolve(expandedOut) : resolve(workDir, expandedOut);
+  if (!/\.jsonl$/i.test(file)) file += '.jsonl';
   try { ensureDir(dirname(file)); } catch (e) { return res.status(400).json({ error: 'Cannot create output directory: ' + e.message }); }
 
   const id = 'run-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
