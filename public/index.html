@@ -1484,6 +1484,16 @@
               <span class="matcher-chip" onclick="document.getElementById('sgDomain').value='Documentation'">Documentation</span>
             </div>
           </div>
+          <div class="form-group" id="sgToolsWrap" style="margin-bottom:8px">
+            <label class="form-label">Tool permissions <span style="font-weight:400;color:var(--text-dim)">(optional — pre-approves tools via <code>allowed-tools</code> so it runs without permission prompts)</span></label>
+            <input type="text" id="sgTools" placeholder="e.g. Read Grep Bash(git add *) Bash(git commit *)">
+            <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:5px">
+              <span class="matcher-chip" onclick="document.getElementById('sgTools').value='Read Grep Glob'">Read-only</span>
+              <span class="matcher-chip" onclick="document.getElementById('sgTools').value='Bash(git add *) Bash(git commit *) Bash(git status) Bash(git diff *)'">Git commit</span>
+              <span class="matcher-chip" onclick="document.getElementById('sgTools').value='Bash(npm test) Bash(npm run *)'">npm scripts</span>
+              <span class="matcher-chip" onclick="document.getElementById('sgTools').value='Read Write Edit'">File editing</span>
+            </div>
+          </div>
           <div class="form-group" style="margin-bottom:0">
             <label class="form-label">Perspective / role to assume <span style="font-weight:400;color:var(--text-dim)">(optional — one, multiple, or blank)</span></label>
             <input type="text" id="sgPerspective" placeholder="e.g. senior engineer, security researcher, DX engineer">

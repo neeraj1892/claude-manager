@@ -104,7 +104,15 @@ FRONTMATTER (use only what the skill needs — Occam):
   when_to_use: CRITICAL — list exact phrases a real user would type to trigger this skill.
                Vague triggers = missed activations. Specific triggers = reliable invocation.
   argument-hint: (if skill takes an arg) Short placeholder, e.g. "[filename]" or "[PR number]"
-  context:     (if skill needs files) Glob patterns auto-loaded as context.
+  allowed-tools: (if the skill's steps use tools) Pre-approve them so the skill runs WITHOUT
+               permission prompts for that turn. Space- or comma-separated rules:
+               allowed-tools: Read Grep Bash(git add *) Bash(git commit *)
+               Grant only what the steps actually need — never a blanket Bash.
+  disallowed-tools: (rarely) Tools removed from the pool while the skill runs, e.g. Write.
+  model:       (optional) sonnet | opus | haiku — model override for the skill's turn only.
+  context: fork  +  agent: Explore|Plan|general-purpose — run the skill in a forked subagent.
+  paths:       (optional) Comma-separated globs; skill auto-activates when matching files are in play.
+  disable-model-invocation: true — only the user may invoke via /name (never auto-triggered).
 
 BODY STRUCTURE (Pareto: when_to_use + numbered steps deliver 80% of value):
   - First line: one sentence stating what this skill does and its output.
@@ -175,13 +183,20 @@ A Claude Code agent is a SKILL.md where the description field is routing instruc
 it tells an orchestrating Claude when to delegate and what to expect back.
 The body teaches the agent its exact workflow. One agent, one responsibility.
 
-FRONTMATTER (Conway's Law: structure mirrors responsibility):
-  name:        kebab-case. The /slash-command and the agent's identity.
-  description: ROUTING INSTRUCTIONS. Format: "Use when [trigger]. Does [actions]. Returns [output]."
-               The orchestrator reads this to decide delegation. One responsibility only.
-  when_to_use: Exact trigger phrases for auto-invocation.
-  tools:       Comma-separated. Occam: only tools the agent will actually call.
-               Options: Bash, Read, Edit, Write, WebFetch, WebSearch, Agent
+FRONTMATTER (Conway's Law: structure mirrors responsibility — NB: agent fields are camelCase):
+  name:        REQUIRED. Lowercase letters + hyphens. The agent's identity (hooks see it as agent_type).
+  description: REQUIRED. ROUTING INSTRUCTIONS. Format: "Use when [trigger]. Does [actions]. Returns [output]."
+               Add "use proactively" to encourage automatic delegation. One responsibility only.
+  tools:       Comma-separated. Occam: only tools the agent will actually call. Inherits ALL if omitted.
+               Options: Bash, Read, Edit, Write, Grep, Glob, WebFetch, WebSearch, Agent, mcp__<server>
+  disallowedTools: Tools to strip from the inherited set (e.g. Write, or mcp__github for a whole server).
+  permissionMode: default | acceptEdits | dontAsk | bypassPermissions | plan — how much it may do unprompted.
+  model:       sonnet | opus | haiku | inherit (default inherit). Cheap agents on haiku save money.
+  maxTurns:    Cap on agentic turns — set for agents that could loop.
+  skills:      Skills to preload into the agent at startup (full content injected).
+  memory:      user | project | local — persistent cross-session memory, only if the job needs it.
+  background:  true — always run as a background task.
+  color:       red|blue|green|yellow|purple|orange|pink|cyan — task-list display color.
 
 BODY STRUCTURE (Pareto: description + first two steps = 80% of agent value):
   - Identity line: "You are a [role] agent. Your single responsibility is [X]."
@@ -622,6 +637,38 @@ function normalizeTools(tools) {
   return [];
 }
 
+// `claude -p` sometimes returns markdown ESCAPED chat-style: \--- \# \_ \*\*
+// plus &#x20; entities for indentation. Saved verbatim, the file is unreadable
+// for both the user and Claude Code. Detect the signature and unescape.
+function unescapeClaudeMarkdown(content) {
+  const looksEscaped = /(^|\n)\\---/.test(content) || content.includes('&#x20;') || /(^|\n)\\#/.test(content);
+  if (!looksEscaped) return content;
+  return content
+    .replace(/&#x20;/g, ' ')
+    .replace(/\\([\\`*_{}\[\]()#+\-.!&~|>])/g, '$1');
+}
+
+// Tool rules can be "Read, Grep" / "Read Grep" / "Bash(git add *) Read" —
+// split on commas/whitespace but never inside parentheses.
+function splitToolRules(s) {
+  if (Array.isArray(s)) return s.map(x => String(x).trim()).filter(Boolean);
+  if (typeof s !== 'string' || !s.trim()) return [];
+  const out = [];
+  let cur = '', depth = 0;
+  for (const ch of s) {
+    if (ch === '(') depth++;
+    else if (ch === ')') depth = Math.max(0, depth - 1);
+    if ((ch === ',' || /\s/.test(ch)) && depth === 0) {
+      if (cur.trim()) out.push(cur.trim());
+      cur = '';
+      continue;
+    }
+    cur += ch;
+  }
+  if (cur.trim()) out.push(cur.trim());
+  return out;
+}
+
 function parseFrontmatter(content) {
   const lines = content.split('\n');
   const meta = {};
@@ -947,6 +994,8 @@ app.get('/api/skills', (req, res) => {
         description: (meta.description || '').slice(0, 120),
         trigger: meta.trigger || '',
         model: meta.model || '',
+        allowedTools: splitToolRules(meta['allowed-tools']),
+        disallowedTools: splitToolRules(meta['disallowed-tools']),
         size: stat ? formatSize(stat.size) : '0 B',
         modified: stat ? stat.mtime.toISOString() : null,
       };
@@ -1486,6 +1535,12 @@ app.post('/api/ai/generate-skill', async (req, res) => {
     }
     content = content.replace(/^```[a-zA-Z]*\n?/, '').replace(/\n?```$/, '').trim();
 
+    // Markdown types: undo chat-style escaping (\--- &#x20; …) BEFORE the fence
+    // checks — otherwise the recovery regex slices at the closing fence and
+    // silently amputates the frontmatter. (Hooks excluded: code legitimately
+    // contains backslash sequences.)
+    if (type !== 'hook') content = unescapeClaudeMarkdown(content);
+
     // For skill/agent: strip any leading prose before the first YAML frontmatter block
     if (type === 'skill' || type === 'agent') {
       if (!content.startsWith('---')) {
@@ -1661,6 +1716,7 @@ app.post('/api/ai/improve-skill', async (req, res) => {
       improved = await callClaudeCli(fullPrompt);
     }
     improved = improved.replace(/^```[a-zA-Z]*\n?/, '').replace(/\n?```$/, '').trim();
+    if (type !== 'hook') improved = unescapeClaudeMarkdown(improved);
     res.json({ content: improved, type });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });

@@ -435,6 +435,12 @@ const FIELD_REF = {
       { name: 'arguments',               req: false, type: 'string | list',   desc: 'Named positional arguments for $name substitution in the skill body. Space-separated string or YAML list. Names map to argument positions in order.',                ex: 'filename format' },
       { name: 'disable-model-invocation',req: false, type: 'boolean',         desc: 'Set true to prevent Claude from automatically loading this skill. Useful for manual-only workflows — the user invokes with /name.',                                   ex: 'true' },
       { name: 'context',                 req: false, type: 'string',          desc: 'Set to "fork" to run this skill inside its own subagent instead of inline in the current session.',                                                                   ex: 'fork' },
+      { name: 'allowed-tools',           req: false, type: 'string | list',   desc: 'Tools pre-approved for the turn that invokes this skill — Claude uses them WITHOUT asking. Grant clears on your next message. Space/comma-separated or YAML list.',    ex: 'Read Grep Bash(git add *) Bash(git commit *)' },
+      { name: 'disallowed-tools',        req: false, type: 'string | list',   desc: 'Tools removed from the pool while this skill is active — a hard block for that turn.',                                                                                 ex: 'Write, Edit' },
+      { name: 'model',                   req: false, type: 'string',          desc: 'Model override for the skill\'s turn only (sonnet | opus | haiku | inherit). Not saved beyond the turn.',                                                              ex: 'haiku' },
+      { name: 'paths',                   req: false, type: 'string | list',   desc: 'Glob patterns — the skill auto-activates only when matching files are being worked on.',                                                                               ex: 'src/**/*.py, tests/**' },
+      { name: 'agent',                   req: false, type: 'string',          desc: 'With context: fork — which subagent type runs the skill (Explore, Plan, general-purpose, or a custom agent).',                                                          ex: 'Explore' },
+      { name: 'user-invocable',          req: false, type: 'boolean',         desc: 'Set false to hide from the / menu — only Claude can trigger it automatically.',                                                                                        ex: 'false' },
     ],
     note: 'Skills can also include supporting files (templates, example outputs, scripts). Reference them from SKILL.md so Claude knows to load them.',
   },
@@ -3013,6 +3019,8 @@ function renderItemGrid(gridId, items, type, icon, onEdit, onDelete, useDisplayN
     if (item.trigger) badges.push(`<span class="badge badge-muted" style="font-size:10px;padding:1px 6px">${escHtml(item.trigger)}</span>`);
     if (item.model)   badges.push(`<span class="badge badge-muted"  style="font-size:10px;padding:1px 6px">${escHtml(item.model.replace('claude-',''))}</span>`);
     if (item.tools && item.tools.length) badges.push(`<span class="badge badge-muted" style="font-size:10px;padding:1px 6px">🔒 ${item.tools.length} tools</span>`);
+    if (item.allowedTools && item.allowedTools.length) badges.push(`<span class="badge badge-success" style="font-size:10px;padding:1px 6px" title="Pre-approved — runs without permission prompts: ${escHtml(item.allowedTools.join(', '))}">🔓 ${item.allowedTools.length} pre-approved</span>`);
+    if (item.disallowedTools && item.disallowedTools.length) badges.push(`<span class="badge badge-warning" style="font-size:10px;padding:1px 6px" title="Blocked while this skill runs: ${escHtml(item.disallowedTools.join(', '))}">⛔ ${item.disallowedTools.length} blocked</span>`);
     if (item.locationLabel) badges.push(`<span class="badge badge-warning" style="font-size:10px;padding:1px 6px" title="Lives outside the ${type}s folder — shipped by a plugin or skill">📦 ${escHtml(item.locationLabel)}</span>`);
 
     return `
@@ -5309,6 +5317,9 @@ function setSkillGenType(type) {
   document.getElementById('skillGenNameHint').innerHTML = meta.nameHint;
   document.getElementById('skillGenName').placeholder = meta.namePlaceholder;
   document.getElementById('skillGenSave').textContent = meta.saveBtn;
+  // Tool permissions apply to skills (allowed-tools) and agents (tools)
+  const toolsWrap = document.getElementById('sgToolsWrap');
+  if (toolsWrap) toolsWrap.style.display = (type === 'skill' || type === 'agent') ? '' : 'none';
   // Show hook-specific panels only for hook type
   const wirePanel = document.getElementById('sgHookWire');
   if (wirePanel) wirePanel.style.display = type === 'hook' ? '' : 'none';
@@ -5334,6 +5345,7 @@ async function showSkillGenerator(initialType, prefillPrompt) {
   const sgStack = document.getElementById('sgTechStack');  if (sgStack) sgStack.value = '';
   const sgDom  = document.getElementById('sgDomain');      if (sgDom)   sgDom.value   = '';
   const sgPersp = document.getElementById('sgPerspective'); if (sgPersp) sgPersp.value = '';
+  const sgTls  = document.getElementById('sgTools');       if (sgTls)   sgTls.value   = '';
   skillGenMethod = 'meta';
   setSkillGenMethod('meta');
   // Reset lang picker
@@ -5447,11 +5459,17 @@ async function runSkillGeneration() {
   const stack       = document.getElementById('sgTechStack')?.value.trim();
   const domain      = document.getElementById('sgDomain')?.value.trim();
   const perspective = document.getElementById('sgPerspective')?.value.trim();
+  const toolPerms   = document.getElementById('sgTools')?.value.trim();
   const ctxLines = [];
   if (repo)        ctxLines.push(`Repository/project: ${repo}`);
   if (stack)       ctxLines.push(`Tech stack: ${stack}`);
   if (domain)      ctxLines.push(`Domain: ${domain}`);
   if (perspective) ctxLines.push(`Assume the perspective of: ${perspective}`);
+  if (toolPerms) {
+    ctxLines.push(skillGenType === 'agent'
+      ? `Tool permissions: set the frontmatter "tools" field to exactly: ${toolPerms}`
+      : `Tool permissions: set the frontmatter "allowed-tools" field to exactly: ${toolPerms} (so the ${skillGenType} runs without permission prompts)`);
+  }
   const prompt = ctxLines.length ? basePrompt + '\n\nContext:\n' + ctxLines.join('\n') : basePrompt;
 
   // If OpenRouter inline key was entered, save it first

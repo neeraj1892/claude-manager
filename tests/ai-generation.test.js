@@ -266,6 +266,46 @@ test('hookLang .sh selects the Bash system prompt', async () => {
 
 // ── Output hygiene ──
 
+test('REGRESSION: chat-escaped CLI output (\\--- &#x20; \\#) is unescaped, frontmatter survives', async () => {
+  const { status, data } = await s.api('POST', '/ai/generate-skill', { prompt: 'ESCAPED_TEST repo skill', provider: 'claude-cli', type: 'skill' });
+  assert.equal(status, 200, JSON.stringify(data));
+  const c = data.content;
+  assert.ok(c.startsWith('---\nname: repo-understand'), 'fence unescaped, frontmatter intact: ' + JSON.stringify(c.slice(0, 40)));
+  assert.ok(!c.includes('\\---'), 'no escaped fences remain');
+  assert.ok(!c.includes('&#x20;'), 'no HTML-entity spaces remain');
+  assert.ok(!c.includes('\\#') && !c.includes('\\_') && !c.includes('\\*'), 'punctuation unescaped');
+  assert.ok(c.includes('when_to_use:'), 'underscored keys restored');
+  assert.ok(c.includes('mcp__codebase'), 'double underscores restored');
+  assert.ok(c.includes('# Repo Understand') && c.includes('## Steps'), 'headings restored');
+  // saved file parses: description shows on the card
+  const save = await s.api('POST', '/skills', { name: 'escaped-fixture', content: c });
+  assert.equal(save.status, 201);
+  const list = await s.api('GET', '/skills');
+  const item = list.data.find(x => x.name === 'escaped-fixture');
+  assert.match(item.description, /Deep-dives a repository/, 'card description parses correctly');
+});
+
+test('skills list surfaces allowed-tools / disallowed-tools (incl. Bash(...) rules)', async () => {
+  const { mkdirSync, writeFileSync } = require('fs');
+  const { join } = require('path');
+  mkdirSync(join(s.claudeDir, 'skills', 'permitted-skill'), { recursive: true });
+  writeFileSync(join(s.claudeDir, 'skills', 'permitted-skill', 'SKILL.md'),
+    '---\nname: permitted-skill\ndescription: does things\nallowed-tools: Read Grep Bash(git add *) Bash(git commit *)\ndisallowed-tools: Write, Edit\n---\nBody');
+  const { data } = await s.api('GET', '/skills');
+  const it = data.find(x => x.name === 'permitted-skill');
+  assert.deepEqual(it.allowedTools, ['Read', 'Grep', 'Bash(git add *)', 'Bash(git commit *)'],
+    'space-separated rules with parenthesised args parsed: ' + JSON.stringify(it.allowedTools));
+  assert.deepEqual(it.disallowedTools, ['Write', 'Edit'], 'comma-separated form parsed');
+});
+
+test('skill generation prompt teaches allowed-tools; agent prompt teaches permissionMode', async () => {
+  await s.api('POST', '/ai/generate-skill', { prompt: 'x', provider: 'claude-cli', type: 'skill' });
+  assert.ok(s.readShimPrompt().includes('allowed-tools:'), 'skill prompt documents allowed-tools');
+  await s.api('POST', '/ai/generate-skill', { prompt: 'y', provider: 'claude-cli', type: 'agent' });
+  const p = s.readShimPrompt();
+  assert.ok(p.includes('permissionMode:') && p.includes('disallowedTools:'), 'agent prompt documents permission fields');
+});
+
 test('code-fence-wrapped AI output is stripped to raw content', async () => {
   const { status, data } = await s.api('POST', '/ai/generate-skill', { prompt: 'FENCED_TEST make it', provider: 'claude-cli', type: 'skill' });
   assert.equal(status, 200, JSON.stringify(data));

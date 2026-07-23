@@ -40,6 +40,9 @@ if [ "$1" = "-p" ]; then
     *"workflow architect"*)
       printf '{"name":"test-workflow","title":"Test Workflow","description":"d","setupGuide":["a"],"components":[{"type":"skill","name":"comp-one","description":"d"},{"type":"hook","name":"guard-hook","description":"guards","event":"PreToolUse","matcher":"Bash"}]}'
       ;;
+    *"ESCAPED_TEST"*)
+      printf -- '\\\\---\\nname: repo-understand\\ndescription: >\\n&#x20; Deep-dives a repository.\\nwhen\\\\_to\\\\_use: >\\n&#x20; Use when asked to explain a repo.\\n\\\\---\\n\\n\\\\# Repo Understand\\n\\n\\\\## Steps\\n\\n\\\\- Call \\\\*\\\\*mcp\\\\_\\\\_codebase\\\\*\\\\* tools.'
+      ;;
     *"FENCED_TEST"*)
       printf -- '\`\`\`markdown\\n---\\nname: fenced-skill\\ndescription: was wrapped in a code fence\\n---\\n\\n# Fenced\\n\`\`\`'
       ;;
