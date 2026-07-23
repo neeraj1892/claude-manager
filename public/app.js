@@ -5596,8 +5596,11 @@ async function runSkillGeneration() {
   if (perspective) ctxLines.push(`Assume the perspective of: ${perspective}`);
   if (toolPerms) {
     ctxLines.push(skillGenType === 'agent'
-      ? `Tool permissions: set the frontmatter "tools" field to exactly: ${toolPerms}`
-      : `Tool permissions: set the frontmatter "allowed-tools" field to exactly: ${toolPerms} (so the ${skillGenType} runs without permission prompts)`);
+      ? `Tool permissions: set the frontmatter "tools" field to exactly: ${toolPerms} — extend it if the steps genuinely require more; every tool the body uses must be listed`
+      : `Tool permissions: set the frontmatter "allowed-tools" field to exactly: ${toolPerms} (so the ${skillGenType} runs without permission prompts) — extend it if the steps genuinely require more; every tool the body uses must be listed`);
+  }
+  if (repo || stack || domain) {
+    ctxLines.push('The context above describes the environment — hardcode it into the artifact only where its purpose demands it; reference MCP tools conditionally with a built-in fallback.');
   }
   const prompt = ctxLines.length ? basePrompt + '\n\nContext:\n' + ctxLines.join('\n') : basePrompt;
 

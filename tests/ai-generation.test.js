@@ -336,6 +336,79 @@ test('generate-workflow (full) returns a component list', async () => {
   assert.equal((await s.api('POST', '/ai/generate-workflow', {})).status, 400);
 });
 
+// ── Meta-prompt audit: consistency layer, context discipline, event catalog ──
+
+test('generation prompts carry the consistency rule and context discipline', async () => {
+  await s.api('POST', '/ai/generate-skill', { prompt: 'a', provider: 'claude-cli', type: 'skill' });
+  let p = s.readShimPrompt();
+  assert.ok(p.includes('CONSISTENCY RULE'), 'skill prompt: body ⇄ allowed-tools rule');
+  assert.ok(p.includes('CONTEXT DISCIPLINE'), 'skill prompt: bake-vs-adapt guidance');
+  assert.ok(p.includes('LARGER AUTONOMOUS SKILLS'), 'skill prompt: second structural tier');
+  await s.api('POST', '/ai/generate-skill', { prompt: 'b', provider: 'claude-cli', type: 'agent' });
+  p = s.readShimPrompt();
+  assert.ok(p.includes('CONSISTENCY RULE') && p.includes('mcpServers'), 'agent prompt: rule + mcpServers field');
+  await s.api('POST', '/ai/generate-skill', { prompt: 'c', provider: 'claude-cli', type: 'command' });
+  p = s.readShimPrompt();
+  assert.ok(p.includes('CONSISTENCY RULE') && p.includes('disable-model-invocation'), 'command prompt: rule + new fields');
+});
+
+test('hook prompts teach the FULL event catalog (was 4 of 19)', async () => {
+  for (const [lang, marker] of [['.mjs', 'ESM JavaScript'], ['.py', 'Python 3 hooks'], ['.sh', 'Bash shell hooks']]) {
+    await s.api('POST', '/ai/generate-skill', { prompt: 'evt probe', provider: 'claude-cli', type: 'hook', hookLang: lang });
+    const p = s.readShimPrompt();
+    assert.ok(p.includes(marker), lang + ' prompt used');
+    assert.ok(p.includes('UserPromptSubmit') && p.includes('SessionEnd') && p.includes('PreCompact'),
+      lang + ': full catalog injected');
+    assert.ok(!p.includes('{{EVENTS}}'), lang + ': token replaced');
+  }
+});
+
+test('full workflow generation demands grants on components', async () => {
+  await s.api('POST', '/ai/generate-workflow', { goal: 'g', provider: 'claude-cli' });
+  assert.ok(s.readShimPrompt().includes('allowed-tools/tools MUST list every tool'),
+    'workflow-generated skills carry pre-approval grants');
+});
+
+test('improve is type-aware and re-injects the consistency rule', async () => {
+  await s.api('POST', '/ai/improve-skill', { content: '#!/usr/bin/env node\nx', provider: 'claude-cli', type: 'hook' });
+  let p = s.readShimPrompt();
+  assert.ok(p.includes('stop_hook_active'), 'hook improve checks hook laws');
+  assert.ok(!p.includes('sharpen trigger phrases'), 'hook improve no longer told to sharpen trigger phrases');
+  await s.api('POST', '/ai/improve-skill', { content: '---\nname: x\n---\nb', provider: 'claude-cli', type: 'skill' });
+  assert.ok(s.readShimPrompt().includes('CONSISTENCY CHECK'), 'skill improve can now fix grant mismatches');
+});
+
+test('creator paths are hardened too (methodology body untouched)', async () => {
+  const creators = await s.api('GET', '/skills/creators');
+  const builtin = creators.data.find(c => (c.content || '').includes('Official Skill-Creator Methodology'));
+  assert.ok(builtin, 'builtin methodology listed');
+  assert.ok(builtin.content.includes('Claude Code Additions (app addendum'), 'addendum appended');
+  assert.ok(builtin.content.includes('allowed-tools'), 'addendum teaches allowed-tools');
+  assert.ok(builtin.content.includes('NEVER backslash-escape'), 'builtin tail carries the output contract');
+  assert.ok(builtin.content.includes('slightly "pushy"'), 'original methodology text preserved');
+  await s.api('POST', '/ai/generate-skill', {
+    prompt: 'w', provider: 'claude-cli', type: 'skill',
+    creatorContent: '---\nname: c\n---\nCustom methodology with skill-creation guidance.',
+  });
+  const p = s.readShimPrompt();
+  assert.ok(p.includes('NEVER backslash-escape'), 'creator wrapper carries anti-escape rule');
+  assert.ok(p.includes('lists every tool the body uses'), 'creator wrapper carries consistency rule');
+});
+
+test('compose inventory: hooks carry description + wiredTo; settings catalog current', async () => {
+  await s.api('POST', '/hooks/files', { name: 'inv-probe.mjs', content: '#!/usr/bin/env node\n// Blocks accidental force pushes to main\nprocess.exit(0);\n' });
+  await s.api('POST', '/hooks/wire', { event: 'PreToolUse', matcher: 'Bash', filename: 'inv-probe.mjs' });
+  await s.api('POST', '/ai/compose-workflow', { goal: 'guard pushes', provider: 'claude-cli' });
+  const p = s.readShimPrompt();
+  assert.ok(p.includes('Blocks accidental force pushes'), 'hook first-comment surfaces as description');
+  assert.ok(/inv-probe[\s\S]*?PreToolUse/.test(p), 'wiredTo events included');
+  assert.ok(p.includes('already wired'), 'compose told not to re-wire');
+  await s.api('POST', '/ai/suggest-settings', { request: 'hide the code-review skill', provider: 'claude-cli' });
+  const sp = s.readShimPrompt();
+  assert.ok(sp.includes('skillOverrides') && sp.includes('disableBundledSkills') && sp.includes('additionalDirectories'),
+    'settings catalog includes current documented keys');
+});
+
 test('CLI generation is pinned to Opus (authoring quality over latency)', async () => {
   await s.api('POST', '/ai/generate-skill', { prompt: 'model pin probe', provider: 'claude-cli', type: 'skill' });
   assert.ok(s.readShimArgs().includes('--model opus'), 'generate uses opus: ' + s.readShimArgs());
@@ -370,7 +443,7 @@ test('REGRESSION: full workflow generation prompt demands event/matcher for hook
   const p = s.readShimPrompt();
   assert.ok(p.includes('EVERY hook component MUST include "event"'),
     'one-shot workflow prompt now supports auto-wiring (was missing, unlike the plan prompt)');
-  assert.ok(p.includes('when_to_use for skills'), 'stale "trigger" field name corrected');
+  assert.ok(p.includes('when_to_use, allowed-tools for skills'), 'stale "trigger" field name corrected + grants required');
   assert.ok(p.includes('VERIFY'), 'setup guide must end with a verification step (Gilbert)');
 });
 

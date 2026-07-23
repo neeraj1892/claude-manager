@@ -114,6 +114,18 @@ FRONTMATTER (use only what the skill needs — Occam):
   paths:       (optional) Comma-separated globs; skill auto-activates when matching files are in play.
   disable-model-invocation: true — only the user may invoke via /name (never auto-triggered).
 
+CONSISTENCY RULE (a wrong grant is worse than none):
+  Every tool the body's steps use MUST appear in allowed-tools, and every rule in
+  allowed-tools MUST be used by some step. Bash rules must match the exact commands
+  the steps run (step says "python -m pytest" → grant Bash(python *)). A mismatch
+  causes permission prompts at runtime — defeating the point of the grant.
+
+CONTEXT DISCIPLINE (when the request carries tech stack / domain / MCP context):
+  Context describes the user's ENVIRONMENT — it informs your choices; it is not text
+  to copy in. Hardcode a stack or tool into the skill only when the skill's purpose
+  is inherently specific to it. Reference MCP tools conditionally with a built-in
+  fallback: "If mcp__<server> is available use it; otherwise use Grep/Glob."
+
 BODY STRUCTURE (Pareto: when_to_use + numbered steps deliver 80% of value):
   - First line: one sentence stating what this skill does and its output.
   - Steps: 3-7 numbered items (Miller's Law). Each step is complete and actionable.
@@ -121,6 +133,13 @@ BODY STRUCTURE (Pareto: when_to_use + numbered steps deliver 80% of value):
   - Any step that runs a command states what to do if it fails (Gilbert: own the outcome —
     "if gh is missing, use the git CLI equivalent", not silent failure).
   - One short edge-case paragraph at the end. No more.
+  - LARGER AUTONOMOUS SKILLS (plan executors, multi-file refactors, long-running
+    workflows) outgrow the 3-7 step format. Use instead: Mission (one paragraph) →
+    Operating principles (re-read any file modified by an earlier step before editing
+    it again; check whether a step is already satisfied before implementing it;
+    prefer extending existing code over replacing it; on divergence from the spec,
+    stop and report rather than rewriting broadly) → Workflow → Failure handling &
+    report format. Up to ~300 lines is fine for these.
 
 ===== BEGIN EXAMPLE (a production-quality skill) =====
 
@@ -209,6 +228,18 @@ FRONTMATTER (Conway's Law: structure mirrors responsibility — NB: agent fields
   memory:      user | project | local — persistent cross-session memory, only if the job needs it.
   background:  true — always run as a background task.
   color:       red|blue|green|yellow|purple|orange|pink|cyan — task-list display color.
+  mcpServers:  MCP servers this agent may use — REQUIRED when any step calls an mcp__ tool.
+  effort:      low | medium | high — reasoning effort override.
+  isolation:   worktree — run in an isolated git worktree copy of the repo.
+  initialPrompt: First message injected when the agent starts (rarely needed).
+
+CONSISTENCY RULE: every tool the body's steps use MUST appear in "tools" (and any
+mcp__ tool's server in "mcpServers"); every listed tool MUST be used by some step.
+A mismatch causes permission prompts or missing capabilities at runtime.
+
+CONTEXT DISCIPLINE: request context (stack, domain, MCPs) describes the ENVIRONMENT.
+Hardcode it only when the agent's purpose demands it; reference MCP tools
+conditionally with a built-in fallback (Grep/Glob/Bash).
 
 BODY STRUCTURE (Pareto: description + first two steps = 80% of agent value):
   - Identity line: "You are a [role] agent. Your single responsibility is [X]."
@@ -287,11 +318,16 @@ const HOOK_SYSTEM_PROMPT = `You are an expert Claude Code hook author.
 A hook is an ESM JavaScript file (.mjs) Claude Code runs at lifecycle events.
 Claude pipes JSON to stdin; the hook reads it, acts, then exits with the right code.
 
-HOOK EVENTS:
+HOOK EVENTS (the four most common, with documented payloads):
   PreToolUse   — before Claude calls a tool. Can BLOCK the call.
   PostToolUse  — after a tool completes. Can inject feedback into the transcript.
   Stop         — when Claude is about to stop. Can redirect Claude back to work.
   SessionStart — once when session begins. Good for setup and context injection.
+ALL AVAILABLE EVENTS: {{EVENTS}}
+Pick the event that truly matches the request — e.g. UserPromptSubmit for "when the
+user sends a message", SessionEnd for "when the session ends" — never force a fit
+onto the four above. For events beyond those four, read stdin fields defensively
+(guard every access) instead of assuming payload field names.
 
 STDIN PROTOCOL (Postel — be liberal in what you accept):
   Collect lines via readline, parse at 'close'. Always fallback to {}.
@@ -392,11 +428,14 @@ const HOOK_SYSTEM_PROMPT_PYTHON = `You are an expert Claude Code hook author wri
 A hook is a Python 3 script (.py) Claude Code runs at lifecycle events.
 Claude pipes JSON to stdin; the hook reads it, acts, then exits with the right code.
 
-HOOK EVENTS:
+HOOK EVENTS (the four most common):
   PreToolUse   — before Claude calls a tool. Can BLOCK the call.
   PostToolUse  — after a tool completes.
   Stop         — when Claude is about to stop. Can redirect Claude back to work.
   SessionStart — once when session begins.
+ALL AVAILABLE EVENTS: {{EVENTS}}
+Pick the event that truly matches the request; for events beyond the four above,
+read stdin fields defensively (data.get everywhere) instead of assuming field names.
 
 STDIN PROTOCOL:
   Read all stdin with sys.stdin.read(). Parse as JSON, fallback to {}.
@@ -454,11 +493,14 @@ Claude pipes JSON to stdin; the hook reads it, acts, then exits with the right c
 
 NOTE: Bash hooks work on macOS and Linux only. For Windows support, use Node.js (.mjs) or Python (.py).
 
-HOOK EVENTS:
+HOOK EVENTS (the four most common):
   PreToolUse   — before Claude calls a tool. Can BLOCK the call.
   PostToolUse  — after a tool completes.
   Stop         — when Claude is about to stop.
   SessionStart — once when session begins.
+ALL AVAILABLE EVENTS: {{EVENTS}}
+Pick the event that truly matches the request; for events beyond the four above,
+treat every get_field result as possibly empty instead of assuming field names.
 
 STDIN / PARSING:
   Read with INPUT=$(cat). Use python3 helper for reliable JSON field extraction:
@@ -516,6 +558,9 @@ STRUCTURE (optional YAML frontmatter, then markdown instructions):
 description: One sentence shown in the command picker.
 argument-hint: "[file or PR number]"
 allowed-tools: Bash(git *), Read
+when_to_use: (optional) trigger phrases — commands are skills; the same auto-trigger rules apply.
+model: (optional) sonnet | opus | haiku — model override for the command's turn.
+disable-model-invocation: true — RECOMMENDED for side-effectful commands (deploy, commit, send) so only the user can trigger them.
 ---
 
 # /command-name
@@ -528,6 +573,10 @@ One sentence: what this command does and what it outputs.
    user's input is needed.
 2. Each step is complete and actionable.
 3. Show the exact output format with a short realistic example.
+
+CONSISTENCY RULE: every tool the steps use MUST appear in allowed-tools (Bash rules
+matching the exact commands the steps run), and every granted rule MUST be used by
+some step — a mismatch causes permission prompts at runtime.
 
 EXAMPLE of a production-quality command:
 
@@ -969,6 +1018,14 @@ Valid settings.json keys:
   Rule syntax: Tool or Tool(specifier). Examples: "Bash(git *)", "Bash(npm run test:*)",
   "Read(~/.ssh/**)", "Edit(.env)", "WebFetch(domain:github.com)", "mcp__github".
   deny beats allow. Deny secrets access with rules like "Read(.env)", "Read(.env.*)", "Read(**/secrets/**)".
+  permissions also supports: "defaultMode": "default"|"acceptEdits"|"plan"|"dontAsk"|"bypassPermissions",
+  "additionalDirectories": [paths], "disableBypassPermissionsMode": "disable"
+- enabledPlugins: { "plugin@marketplace": true|false } — enable/disable installed plugins
+- skillOverrides: { "<skill-name>": "on"|"name-only"|"user-invocable-only"|"off" } — per-skill visibility
+- disableBundledSkills: boolean — hide bundled skills like /code-review, /debug
+- disableSkillShellExecution: boolean — stop skills executing inline shell command blocks
+- sandbox: object — OS-level bash sandboxing (filesystem/network restrictions)
+- skillListingBudgetFraction: number — context budget for the skill listing (e.g. 0.02)
 - env: { "KEY": "value" } — environment variables injected into every session
 - hooks: lifecycle hook wiring (PreToolUse/PostToolUse/Stop/SessionStart -> matcher -> commands)
 - includeCoAuthoredBy: boolean — "Co-Authored-By: Claude" on git commits
@@ -1576,11 +1633,13 @@ app.post('/api/ai/generate-skill', async (req, res) => {
     const endsWithRequest = creatorContent.trimEnd().endsWith('Request:');
     fullPrompt = endsWithRequest
       ? creatorContent.trimEnd() + ' ' + prompt.trim()
-      : `You are generating a Claude Code ${type} using the methodology below.\n\n${creatorContent.trim()}\n\n========\nCRITICAL: Your response must be ONLY the raw file content with zero preamble or explanation.\nFor skill/agent the very first characters must be "---" (YAML frontmatter). Do NOT write anything before it.\nFor hook the very first line must be a shebang like "#!/usr/bin/env node".\n\nRequest: ${prompt.trim()}`;
+      : `You are generating a Claude Code ${type} using the methodology below.\n\n${creatorContent.trim()}\n\n========\nCRITICAL: Your response must be ONLY the raw file content with zero preamble or explanation.\nFor skill/agent the very first characters must be "---" (YAML frontmatter). Do NOT write anything before it.\nFor hook the very first line must be a shebang like "#!/usr/bin/env node".\nWrite markdown plainly — NEVER backslash-escape it (no \\---, no \\#) and never use HTML entities like &#x20;.\nEnsure allowed-tools (skills) or tools (agents) lists every tool the body uses, and nothing it doesn't.\nIf the request is ambiguous, implement the most common reasonable interpretation and note the assumption in the description.\n\nRequest: ${prompt.trim()}`;
   } else {
     const hookPromptMap = { '.mjs': 'hook-generate-node', '.js': 'hook-generate-node', '.py': 'hook-generate-python', '.sh': 'hook-generate-bash', '.bash': 'hook-generate-bash' };
     const promptMap = { skill: 'skill-generate', agent: 'agent-generate', command: 'command-generate', hook: (hookLang && hookPromptMap[hookLang]) || 'hook-generate-node' };
-    fullPrompt = getPrompt(promptMap[type] || 'skill-generate') + prompt.trim();
+    // Hook prompts carry an {{EVENTS}} token — inject the live, doc-synced event
+    // catalog (same pattern as the custom-event designer). No-op for other types.
+    fullPrompt = getPrompt(promptMap[type] || 'skill-generate').replaceAll('{{EVENTS}}', BUILTIN_HOOK_EVENTS.join(', ')) + prompt.trim();
   }
   try {
     let content;
@@ -1724,8 +1783,27 @@ Output: feat(auth): implement JWT-based authentication
 
 ---
 
+## Claude Code Additions (app addendum — NOT part of the original methodology)
+
+Claude Code extends the standard with frontmatter fields the methodology above predates. Use them:
+- when_to_use: trigger phrases a real user would type (appended to description in the skill listing).
+- argument-hint: "[arg]" placeholder if the skill takes arguments; the body may use $ARGUMENTS.
+- allowed-tools: pre-approve the EXACT tools/commands the body uses, e.g. Read Edit Bash(git add *).
+  CONSISTENCY RULE: every tool the body uses must be listed, and every listed rule must be used —
+  a mismatch causes permission prompts at runtime.
+- disable-model-invocation: true for side-effectful skills only the user should trigger.
+- model / context: fork + agent: — run on a specific model or in a forked subagent.
+
+Context provided with the request (tech stack, domain, MCPs) describes the user's ENVIRONMENT —
+hardcode it only when the skill's purpose demands it; reference MCP tools conditionally with a
+built-in fallback (Grep/Glob/Bash).
+
 Now produce the SKILL.md for the following request.
-Output ONLY the raw file content — start with "---" (YAML frontmatter). No explanation.
+
+OUTPUT CONTRACT — your response is saved to disk verbatim, so:
+- Output ONLY the raw file content, starting with "---" (YAML frontmatter). No explanation, no code fences.
+- Write characters plainly — NEVER backslash-escape markdown (no \\---, no \\#, no \\_) and never use HTML entities like &#x20;.
+If the request is ambiguous, implement the most common reasonable interpretation and record the assumption in the description.
 
 Request: `;
 
@@ -1752,15 +1830,20 @@ ORIGINAL {{TYPE_UPPER}} TO IMPROVE:
 `;
 
 const IMPROVE_PROMPT = (type, feedback, original = '') => {
+  // Type-aware defaults: "sharpen trigger phrases" is meaningless for a hook.
+  const bestPractices = type === 'hook'
+    ? 'Apply best practices: verify FAIL-OPEN (all logic in try/catch, exit 0 in the catch), the stop_hook_active guard, defensive stdin field access, precise detection with an immediate exit 0 on non-match, and no secrets in logs.\n\n'
+    : 'Apply best practices: sharpen trigger phrases, tighten steps (max 7), remove filler, improve the output example to be concrete and realistic.\n\n';
   const feedbackSection = feedback
     ? `User feedback (what needs fixing/improving):\n${feedback}\n\nIncorporate this feedback precisely.\n\n`
-    : 'Apply best practices: sharpen trigger phrases, tighten steps (max 7), remove filler, improve the output example to be concrete and realistic.\n\n';
+    : bestPractices;
   // Language-aware: an improved Python/Bash hook must keep ITS shebang, not be
   // corrupted into a Node one.
   const firstLine = (original.split('\n', 1)[0] || '').trim();
   const shebang = firstLine.startsWith('#!') ? firstLine : '#!/usr/bin/env node';
   const validation = (type === 'skill' || type === 'agent')
-    ? 'Output ONLY the raw improved file content. Start with "---" (YAML frontmatter). Write markdown plainly — never backslash-escape it. No explanation.'
+    ? 'Also run the CONSISTENCY CHECK as part of the improvement: every tool the body uses must appear in allowed-tools (agents: tools, plus mcp__ servers in mcpServers), and every granted rule must be used by some step — fix any mismatch.\n'
+      + 'Output ONLY the raw improved file content. Start with "---" (YAML frontmatter). Write markdown plainly — never backslash-escape it. No explanation.'
     : `Output ONLY the raw improved code. Start with "${shebang}". No explanation.`;
   return getPrompt('improve')
     .replaceAll('{{TYPE_UPPER}}', type.toUpperCase())
@@ -1932,8 +2015,22 @@ function collectInventory() {
   }
   const hooksDir = join(claudeDir, 'hooks');
   if (existsSync(hooksDir)) {
+    // Hooks need more than a filename: the AI otherwise guesses what each does
+    // and may instruct wiring a hook that is already wired.
+    const hookSettings = readJson(join(claudeDir, 'settings.json')).hooks || {};
     for (const full of walkFiles(hooksDir)) {
-      if (HOOK_EXTS.test(full)) inv.hooks.push({ name: relPath(hooksDir, full) });
+      if (!HOOK_EXTS.test(full)) continue;
+      const name = relPath(hooksDir, full);
+      let description = '';
+      try {
+        const firstComment = readFileSync(full, 'utf8').split('\n').slice(0, 6)
+          .find(l => /^\s*(\/\/|#)(?!!)/.test(l));
+        if (firstComment) description = firstComment.replace(/^\s*(\/\/|#)\s*/, '').replace(/\s+/g, ' ').slice(0, 120);
+      } catch {}
+      const wiredTo = Object.entries(hookSettings)
+        .filter(([, arr]) => JSON.stringify(arr).includes(name))
+        .map(([evt]) => evt);
+      inv.hooks.push({ name, description, wiredTo });
     }
   }
   const commandsDir = join(claudeDir, 'commands');
@@ -1967,8 +2064,9 @@ async function buildAiContextBlocks({ mcpRefs, referenceUrl } = {}) {
   if (Array.isArray(mcpRefs) && mcpRefs.length) {
     const all = collectMcpAndPlugins();
     const chosen = mcpRefs.map(name => all.find(x => x.name === name) || { name, kind: 'mcp', description: '' });
-    blocks.push('AVAILABLE MCP SERVERS / PLUGINS (the user selected these — leverage their capabilities in the design and mention them in components/roles and setup steps where relevant):\n'
-      + chosen.map(x => `- ${x.name} (${x.kind})${x.description ? ': ' + x.description : ''}`).join('\n'));
+    blocks.push('AVAILABLE MCP SERVERS / PLUGINS (user-selected environment context):\n'
+      + chosen.map(x => `- ${x.name} (${x.kind})${x.description ? ': ' + x.description : ''}`).join('\n')
+      + '\nUse their capabilities to inform the design, but reference their tools CONDITIONALLY with a built-in fallback ("if mcp__<server> is unavailable, use Grep/Glob/Bash equivalents"). Never make a component unusable without them unless the goal is inherently about that server.');
   }
   if (referenceUrl?.trim()) {
     let u;
@@ -1999,6 +2097,8 @@ Rules:
 - components MUST use exact names from the inventory — never invent installed resources.
 - missing lists only genuinely absent pieces. Max 6 components + 4 missing.
 - If hooks must be wired to lifecycle events (PreToolUse etc.), explain in setupGuide.
+- Hook inventory entries carry "wiredTo" (events they are ALREADY active on) — never
+  instruct wiring a hook to an event it is already wired to.
 - The LAST setupGuide step MUST tell the user how to VERIFY the workflow works
   (a command to run or behavior to observe).
 - "no" is a valid, honest answer (Falkland). If nothing installed genuinely fits,
@@ -2087,7 +2187,8 @@ Component shape:
 }
 
 Content rules (STRICT — violations invalidate the output):
-- skill/agent: MUST start with "---" (YAML frontmatter), use all relevant fields (name, description, when_to_use for skills; name, description, tools for agents)
+- skill/agent: MUST start with "---" (YAML frontmatter), use all relevant fields (name, description, when_to_use, allowed-tools for skills; name, description, tools for agents)
+- allowed-tools/tools MUST list every tool the component's body uses (one-shot runs rely on this pre-approval), and nothing it doesn't
 - hook: MUST start with "#!/usr/bin/env node" and use readline+stdin protocol (process.stdin / rl.on('line'))
 - hook content MUST be fail-open (all logic in try/catch, exit 0 in the catch) and Stop hooks must check stop_hook_active
 - EVERY hook component MUST include "event" — an unwired hook never fires (Murphy)
@@ -3528,9 +3629,9 @@ const PROMPT_DEFS = {
   'skill-generate':        { label: 'Skill generation',                usedBy: 'Generate with AI → Skill',                       def: () => SKILL_SYSTEM_PROMPT,          note: 'The user request is appended after it — keep it ending with "Request: ".' },
   'agent-generate':        { label: 'Agent generation',                usedBy: 'Generate with AI → Agent',                       def: () => AGENT_SYSTEM_PROMPT,          note: 'Keep it ending with "Request: ".' },
   'command-generate':      { label: 'Command generation',              usedBy: 'Generate with AI → Command; Commands → ✨',      def: () => COMMAND_SYSTEM_PROMPT,        note: 'Keep it ending with "Request: ".' },
-  'hook-generate-node':    { label: 'Hook generation — Node.js',       usedBy: 'Generate with AI → Hook (.mjs/.js); Add-Hook ✨', def: () => HOOK_SYSTEM_PROMPT,           note: 'Keep it ending with "Request: ".' },
-  'hook-generate-python':  { label: 'Hook generation — Python',        usedBy: 'Generate with AI → Hook (.py)',                  def: () => HOOK_SYSTEM_PROMPT_PYTHON,    note: 'Keep it ending with "Request: ".' },
-  'hook-generate-bash':    { label: 'Hook generation — Bash',          usedBy: 'Generate with AI → Hook (.sh)',                  def: () => HOOK_SYSTEM_PROMPT_BASH,      note: 'Keep it ending with "Request: ".' },
+  'hook-generate-node':    { label: 'Hook generation — Node.js',       usedBy: 'Generate with AI → Hook (.mjs/.js); Add-Hook ✨', def: () => HOOK_SYSTEM_PROMPT,           note: 'Keep it ending with "Request: ".', tokens: ['{{EVENTS}}'] },
+  'hook-generate-python':  { label: 'Hook generation — Python',        usedBy: 'Generate with AI → Hook (.py)',                  def: () => HOOK_SYSTEM_PROMPT_PYTHON,    note: 'Keep it ending with "Request: ".', tokens: ['{{EVENTS}}'] },
+  'hook-generate-bash':    { label: 'Hook generation — Bash',          usedBy: 'Generate with AI → Hook (.sh)',                  def: () => HOOK_SYSTEM_PROMPT_BASH,      note: 'Keep it ending with "Request: ".', tokens: ['{{EVENTS}}'] },
   'skill-creator-builtin': { label: 'Built-in skill-creator methodology', usedBy: 'Generate → skill-creator method (when none installed)', def: () => OFFICIAL_SKILL_CREATOR_CONTENT, note: 'Keep it ending with "Request: ".' },
   'improve':               { label: 'Improve with AI',                 usedBy: '✨ Improve on skills/agents/hooks',              def: () => IMPROVE_PROMPT_TEMPLATE,      tokens: ['{{TYPE}}', '{{TYPE_UPPER}}', '{{FEEDBACK}}', '{{VALIDATION}}'] },
   'explain':               { label: 'Explain with AI',                 usedBy: '🤖 Explain everywhere',                          def: () => EXPLAIN_SYSTEM_PROMPT },
