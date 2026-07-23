@@ -336,6 +336,13 @@ test('generate-workflow (full) returns a component list', async () => {
   assert.equal((await s.api('POST', '/ai/generate-workflow', {})).status, 400);
 });
 
+test('CLI generation is pinned to Opus (authoring quality over latency)', async () => {
+  await s.api('POST', '/ai/generate-skill', { prompt: 'model pin probe', provider: 'claude-cli', type: 'skill' });
+  assert.ok(s.readShimArgs().includes('--model opus'), 'generate uses opus: ' + s.readShimArgs());
+  await s.api('POST', '/ai/improve-skill', { content: '---\nname: x\n---\nbody', provider: 'claude-cli', type: 'skill' });
+  assert.ok(s.readShimArgs().includes('--model opus'), 'improve uses opus too');
+});
+
 // ── Meta-prompt review regressions (output contract, agent fields, hook wiring) ──
 
 test('REGRESSION: agent prompt example no longer contains when_to_use (not an agent field)', async () => {

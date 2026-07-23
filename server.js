@@ -617,6 +617,11 @@ function callOpenRouter(apiKey, model, systemPrompt, userPrompt) {
 }
 
 // --- Claude CLI helper (stdin pipe to avoid ARG_MAX limits) ---
+// All AI generation runs on Opus for maximum prompt/output quality — this is
+// authoring-time work where quality beats latency. One-shot RUNS still use the
+// user's default model unless pinned in the Run modal.
+const CLI_GEN_MODEL = 'opus';
+
 function callClaudeCli(fullPrompt) {
   return new Promise((resolve, reject) => {
     // Unique per process + call: Date.now() alone collides when two
@@ -624,8 +629,8 @@ function callClaudeCli(fullPrompt) {
     const tmpFile = join(tmpdir(), `claude-prompt-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}.txt`);
     try { writeFileSync(tmpFile, fullPrompt, 'utf8'); } catch (e) { return reject(new Error('Failed to write temp file: ' + e.message)); }
     const cmd = process.platform === 'win32'
-      ? `type "${tmpFile.replace(/"/g, '\\"')}" | claude -p --dangerously-skip-permissions --allowedTools ""`
-      : `cat "${tmpFile.replace(/"/g, '\\"')}" | claude -p --dangerously-skip-permissions --allowedTools ""`;
+      ? `type "${tmpFile.replace(/"/g, '\\"')}" | claude -p --model ${CLI_GEN_MODEL} --dangerously-skip-permissions --allowedTools ""`
+      : `cat "${tmpFile.replace(/"/g, '\\"')}" | claude -p --model ${CLI_GEN_MODEL} --dangerously-skip-permissions --allowedTools ""`;
     exec(cmd, { shell: true, timeout: 120000, maxBuffer: 10 * 1024 * 1024 }, (err, stdout, stderr) => {
       try { unlinkSync(tmpFile); } catch {}
       if (err) return reject(new Error(stderr?.trim() || err.message));
