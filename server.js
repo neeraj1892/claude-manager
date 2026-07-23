@@ -141,7 +141,8 @@ BODY STRUCTURE (Pareto: when_to_use + numbered steps deliver 80% of value):
   - Show the exact output format with a realistic example (Humphrey: seeing = understanding).
   - Any step that runs a command states what to do if it fails (Gilbert: own the outcome —
     "if gh is missing, use the git CLI equivalent", not silent failure).
-  - One short edge-case paragraph at the end. No more.
+  - A short edge-case section at the end — one paragraph for simple skills; expand it
+    for risky, destructive, or long-running skills where failure handling IS the value.
   - LARGER AUTONOMOUS SKILLS (plan executors, multi-file refactors, long-running
     workflows) outgrow the 3-7 step format. Use instead: Mission (one paragraph) →
     Operating principles (re-read any file modified by an earlier step before editing
@@ -494,6 +495,10 @@ FIVE LAWS (non-negotiable):
   5. MURPHY: assume stdin may be empty and fields missing — use data.get() everywhere.
      Side effects get their own try/except. Never write secrets to logs.
 
+BEFORE WRITING — decide internally, do not output this reasoning:
+1. Which event truly matches the request? 2. What EXACT condition to detect — and everything to ignore?
+3. Block, inject feedback, or side effect only? 4. Which stdin fields might be missing? Guard them.
+
 OUTPUT CONTRACT — your response is saved to disk verbatim, so:
 - Output ONLY raw Python. No explanation, no markdown, no code fences.
 - Start with "#!/usr/bin/env python3". End with the last line of the file.
@@ -554,6 +559,10 @@ FIVE LAWS:
   5. MURPHY: every get_field may return "" — guard with defaults, quote every
      variable expansion. Never write secrets to logs.
 
+BEFORE WRITING — decide internally, do not output this reasoning:
+1. Which event truly matches the request? 2. What EXACT condition to detect — and everything to ignore?
+3. Block, inject feedback, or side effect only? 4. Which fields might be missing? Guard them.
+
 OUTPUT CONTRACT — your response is saved to disk verbatim, so:
 - Output ONLY raw Bash. No explanation, no markdown, no code fences.
 - Start with "#!/usr/bin/env bash". End with the last line of the file.
@@ -597,6 +606,11 @@ CONSISTENCY RULE: every tool the steps use MUST appear in allowed-tools (Bash ru
 matching the exact commands the steps run), and every granted rule MUST be used by
 some step — a mismatch causes permission prompts at runtime. Derive allowed-tools
 from the steps even when the user never specified tools.
+
+BEFORE WRITING — decide internally, do not output this reasoning:
+1. What single action does this command perform? 2. Does it take an argument ($ARGUMENTS)?
+3. Which tools/commands will the steps run? That exact list becomes allowed-tools.
+4. Is it side-effectful? Then set disable-model-invocation: true.
 
 EXAMPLE of a production-quality command:
 
@@ -1127,6 +1141,9 @@ app.put('/api/settings', (req, res) => {
 // The invariant our prompts teach ("every tool the body uses must be granted")
 // enforced as code — DOET: constraints beat instructions. Heuristic on purpose:
 // word-boundary tool names + mcp__ mentions + shell-command signals.
+// ⚠ MAP-VS-TERRITORY: these tool lists are a static snapshot of Claude Code's
+// tool catalog (verified 2026-07 against code.claude.com/docs/en/tools-reference).
+// When Claude Code ships new prompting tools, add them here or the lint under-reports.
 const LINT_PROMPTING_TOOLS = ['Edit', 'Write', 'NotebookEdit', 'WebFetch', 'WebSearch'];
 const LINT_READONLY_TOOLS  = ['Read', 'Grep', 'Glob']; // never prompt inside the cwd
 
@@ -2382,47 +2399,6 @@ app.post('/api/ai/compose-workflow', async (req, res) => {
 
 // --- AI: Workflow & Explain system prompts ---
 
-const WORKFLOW_SYSTEM_PROMPT = `You are an expert Claude Code workflow architect.
-Output ONLY a single raw JSON object — no prose, no markdown fences, no explanation.
-
-JSON shape:
-{
-  "name": "kebab-case-name",
-  "title": "Human Readable Title",
-  "description": "One sentence describing what the workflow does and who benefits.",
-  "setupGuide": ["step 1 plain text", "step 2 plain text", "step 3 plain text"],
-  "components": [ ...Component ]
-}
-
-Component shape:
-{
-  "type": "skill" | "agent" | "hook" | "command",
-  "name": "kebab-case-name",
-  "description": "One sentence describing this component's role.",
-  "event": "hooks ONLY: the lifecycle event to wire to (PreToolUse, PostToolUse, Stop, SessionStart, UserPromptSubmit...)",
-  "matcher": "hooks ONLY: tool-name regex for PreToolUse/PostToolUse (e.g. \\"Bash\\", \\"Write|Edit\\"), empty string otherwise",
-  "content": "...file content..."
-}
-
-Content rules (STRICT — violations invalidate the output):
-- skill/agent: MUST start with "---" (YAML frontmatter), use all relevant fields (name, description, when_to_use, allowed-tools for skills; name, description, tools for agents)
-- allowed-tools/tools MUST list every tool the component's body uses (one-shot runs rely on this pre-approval), and nothing it doesn't
-- hook: MUST start with "#!/usr/bin/env node" and use readline+stdin protocol (process.stdin / rl.on('line'))
-- hook content MUST be fail-open (all logic in try/catch, exit 0 in the catch) and Stop hooks must check stop_hook_active
-- EVERY hook component MUST include "event" — an unwired hook never fires (Murphy)
-- command: plain markdown with a # heading and usage instructions
-- All names: lowercase, hyphens only (no spaces, no underscores)
-- "content" values are JSON strings — escape newlines as \\n and quotes as \\"; invalid JSON invalidates the entire output
-
-Design laws to apply:
-- Pareto: pick the 20% of components that deliver 80% of the goal's value
-- Occam: if a goal can be met with 2 components, don't add a third
-- Miller: cap at 6 components total
-- Kidlin: make each component's purpose unambiguous from its description alone
-- Gilbert: the LAST setupGuide step tells the user how to VERIFY the workflow works (a command to run or behavior to observe)
-
-Goal: `;
-
 const EXPLAIN_SYSTEM_PROMPT = `You are a Claude Code expert helping developers quickly understand configuration artifacts.
 
 Respond using ONLY these emoji-headed sections (omit any that don't apply):
@@ -2450,37 +2426,12 @@ Rules:
 
 `;
 
-app.post('/api/ai/generate-workflow', async (req, res) => {
-  const { goal, provider } = req.body;
-  if (!goal?.trim()) return res.status(400).json({ error: 'goal is required' });
-  let extras = '';
-  try { extras = await buildAiContextBlocks(req.body); }
-  catch (e) { return res.status(e.status || 500).json({ error: e.message }); }
-  // WORKFLOW_SYSTEM_PROMPT ends with "Goal: " — inject extras before that line
-  const fullPrompt = extras
-    ? WORKFLOW_SYSTEM_PROMPT.replace(/Goal: $/, '') + extras + '\n\nGoal: ' + goal.trim()
-    : WORKFLOW_SYSTEM_PROMPT + goal.trim();
-  try {
-    let raw;
-    if (provider === 'openrouter') {
-      const cfg = loadConfig();
-      if (!cfg.openRouterKey) return res.status(400).json({ error: 'OpenRouter API key not configured. Add it in Settings > AI Generation.' });
-      raw = await callOpenRouter(cfg.openRouterKey, cfg.openRouterModel || 'anthropic/claude-sonnet-4-5', '', fullPrompt);
-    } else {
-      if (!claudeCliAvailable) return res.status(400).json({ error: 'Claude CLI not found. Use OpenRouter instead.' });
-      raw = await callClaudeCli(fullPrompt);
-    }
-    const json = raw.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim();
-    const workflow = JSON.parse(json);
-    if (!Array.isArray(workflow.components) || !workflow.components.length) {
-      return res.status(500).json({ error: 'AI returned an invalid workflow structure — try rephrasing your goal.' });
-    }
-    res.json(workflow);
-  } catch (e) {
-    if (e instanceof SyntaxError) return res.status(500).json({ error: 'AI returned invalid JSON. Try again or rephrase the goal.' });
-    res.status(500).json({ error: e.message });
-  }
-});
+// NOTE (first-principles deletion): the one-shot /api/ai/generate-workflow
+// endpoint and its WORKFLOW_SYSTEM_PROMPT were removed. They generated skill/
+// hook content inline with a WEAKER summary of the real per-type prompts (no
+// Five Laws, thin frontmatter rules) and no UI ever called them — the workflow
+// wizard uses /api/ai/generate-workflow-plan + per-type /api/ai/generate-skill,
+// which is now the only architecture.
 
 app.post('/api/ai/explain', async (req, res) => {
   const { content, type, provider } = req.body;

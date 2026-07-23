@@ -78,7 +78,8 @@ BODY STRUCTURE (Pareto: when_to_use + numbered steps deliver 80% of value):
   - Show the exact output format with a realistic example (Humphrey: seeing = understanding).
   - Any step that runs a command states what to do if it fails (Gilbert: own the outcome —
     "if gh is missing, use the git CLI equivalent", not silent failure).
-  - One short edge-case paragraph at the end. No more.
+  - A short edge-case section at the end — one paragraph for simple skills; expand it
+    for risky, destructive, or long-running skills where failure handling IS the value.
   - LARGER AUTONOMOUS SKILLS (plan executors, multi-file refactors, long-running
     workflows) outgrow the 3-7 step format. Use instead: Mission (one paragraph) →
     Operating principles (re-read any file modified by an earlier step before editing
@@ -318,6 +319,11 @@ matching the exact commands the steps run), and every granted rule MUST be used 
 some step — a mismatch causes permission prompts at runtime. Derive allowed-tools
 from the steps even when the user never specified tools.
 
+BEFORE WRITING — decide internally, do not output this reasoning:
+1. What single action does this command perform? 2. Does it take an argument ($ARGUMENTS)?
+3. Which tools/commands will the steps run? That exact list becomes allowed-tools.
+4. Is it side-effectful? Then set disable-model-invocation: true.
+
 EXAMPLE of a production-quality command:
 
 ---
@@ -550,6 +556,10 @@ FIVE LAWS (non-negotiable):
   5. MURPHY: assume stdin may be empty and fields missing — use data.get() everywhere.
      Side effects get their own try/except. Never write secrets to logs.
 
+BEFORE WRITING — decide internally, do not output this reasoning:
+1. Which event truly matches the request? 2. What EXACT condition to detect — and everything to ignore?
+3. Block, inject feedback, or side effect only? 4. Which stdin fields might be missing? Guard them.
+
 OUTPUT CONTRACT — your response is saved to disk verbatim, so:
 - Output ONLY raw Python. No explanation, no markdown, no code fences.
 - Start with "#!/usr/bin/env python3". End with the last line of the file.
@@ -621,6 +631,10 @@ FIVE LAWS:
   4. STOP GUARD: Always check STOP_ACTIVE and exit 0 immediately when True.
   5. MURPHY: every get_field may return "" — guard with defaults, quote every
      variable expansion. Never write secrets to logs.
+
+BEFORE WRITING — decide internally, do not output this reasoning:
+1. Which event truly matches the request? 2. What EXACT condition to detect — and everything to ignore?
+3. Block, inject feedback, or side effect only? 4. Which fields might be missing? Guard them.
 
 OUTPUT CONTRACT — your response is saved to disk verbatim, so:
 - Output ONLY raw Bash. No explanation, no markdown, no code fences.

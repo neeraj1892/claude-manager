@@ -329,11 +329,11 @@ test('explain endpoint returns an explanation', async () => {
   assert.equal((await s.api('POST', '/ai/explain', {})).status, 400);
 });
 
-test('generate-workflow (full) returns a component list', async () => {
-  const { status, data } = await s.api('POST', '/ai/generate-workflow', { goal: 'automate reviews', provider: 'claude-cli' });
-  assert.equal(status, 200, JSON.stringify(data));
-  assert.ok(Array.isArray(data.components) && data.components.length >= 1);
-  assert.equal((await s.api('POST', '/ai/generate-workflow', {})).status, 400);
+test('DELETED: one-shot workflow generation is gone — plan + per-type prompts is the only architecture', async () => {
+  // It duplicated the per-type prompts with weaker rules (no hook laws, thin
+  // frontmatter) and no UI called it. First-principles: the best part is no part.
+  const { status } = await s.api('POST', '/ai/generate-workflow', { goal: 'automate reviews', provider: 'claude-cli' });
+  assert.equal(status, 404, 'endpoint removed');
 });
 
 // ── Meta-prompt audit: consistency layer, context discipline, event catalog ──
@@ -363,10 +363,12 @@ test('hook prompts teach the FULL event catalog (was 4 of 19)', async () => {
   }
 });
 
-test('full workflow generation demands grants on components', async () => {
-  await s.api('POST', '/ai/generate-workflow', { goal: 'g', provider: 'claude-cli' });
-  assert.ok(s.readShimPrompt().includes('allowed-tools/tools MUST list every tool'),
-    'workflow-generated skills carry pre-approval grants');
+test('workflow component content flows through the hardened per-type prompts', async () => {
+  // The wizard generates each planned component via /ai/generate-skill, so every
+  // component gets the full per-type rules (consistency, laws, contract).
+  await s.api('POST', '/ai/generate-skill', { prompt: 'component gen probe', provider: 'claude-cli', type: 'skill' });
+  const p = s.readShimPrompt();
+  assert.ok(p.includes('CONSISTENCY RULE') && p.includes('OUTPUT CONTRACT'), 'components inherit the hardened rules');
 });
 
 test('improve is type-aware and re-injects the consistency rule', async () => {
@@ -506,12 +508,10 @@ test('generation prompts carry the output contract: anti-escape rule + ambiguity
   assert.ok(p.includes('IF THE REQUEST IS AMBIGUOUS'), 'hook prompt has the uncertainty channel');
 });
 
-test('REGRESSION: full workflow generation prompt demands event/matcher for hooks', async () => {
-  await s.api('POST', '/ai/generate-workflow', { goal: 'guard commits', provider: 'claude-cli' });
+test('REGRESSION: workflow PLAN prompt demands event/matcher + verification step', async () => {
+  await s.api('POST', '/ai/generate-workflow-plan', { goal: 'guard commits', provider: 'claude-cli' });
   const p = s.readShimPrompt();
-  assert.ok(p.includes('EVERY hook component MUST include "event"'),
-    'one-shot workflow prompt now supports auto-wiring (was missing, unlike the plan prompt)');
-  assert.ok(p.includes('when_to_use, allowed-tools for skills'), 'stale "trigger" field name corrected + grants required');
+  assert.ok(p.includes('EVERY hook component MUST include "event"'), 'plan hooks carry wiring info');
   assert.ok(p.includes('VERIFY'), 'setup guide must end with a verification step (Gilbert)');
 });
 
