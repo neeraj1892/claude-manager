@@ -483,6 +483,15 @@ test('JSON prompts carry the character-boundary + array-truncation guards (Gemin
   assert.ok(sp.includes('NEVER truncate an array'), 'array truncation forbidden — protects existing permissions');
 });
 
+test('generation prompts carry priority ordering + final gate (validated ChatGPT round 2)', async () => {
+  for (const [type, extra] of [['skill', {}], ['agent', {}], ['command', {}], ['hook', { hookLang: '.py' }]]) {
+    await s.api('POST', '/ai/generate-skill', { prompt: 'gate probe', provider: 'claude-cli', type, ...extra });
+    const p = s.readShimPrompt();
+    assert.ok(p.includes('PRIORITY when constraints conflict'), type + ': precedence declared');
+    assert.ok(p.includes('Final check before responding'), type + ': self-gate present');
+  }
+});
+
 test('generation prompts carry the internal planning phase', async () => {
   await s.api('POST', '/ai/generate-skill', { prompt: 'p', provider: 'claude-cli', type: 'skill' });
   assert.ok(s.readShimPrompt().includes('BEFORE WRITING — decide internally'), 'skill planning phase');

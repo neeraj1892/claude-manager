@@ -214,6 +214,9 @@ IF THE REQUEST IS AMBIGUOUS OR PARTLY IMPOSSIBLE — you cannot ask questions, s
 - Record the assumption in one line inside the description field.
 - Never invent Claude Code capabilities that don't exist; build the nearest real thing instead.
 
+PRIORITY when constraints conflict: 1) this output contract  2) valid YAML/markdown syntax  3) the consistency rule  4) content quality  5) style.
+Final check before responding: output starts and ends correctly, every tool the body uses is granted (and nothing more), required fields present — fix silently, then output only the file.
+
 Request: `;
 
 const AGENT_SYSTEM_PROMPT = `You are an expert Claude Code agent author.
@@ -326,6 +329,9 @@ IF THE REQUEST IS AMBIGUOUS OR PARTLY IMPOSSIBLE — you cannot ask questions, s
 - Implement the most common reasonable interpretation.
 - Record the assumption in one line inside the description field.
 - Never invent Claude Code capabilities that don't exist; build the nearest real thing instead.
+
+PRIORITY when constraints conflict: 1) this output contract  2) valid YAML/markdown syntax  3) the consistency rule  4) content quality  5) style.
+Final check before responding: output starts and ends correctly, every tool the body uses is granted (and nothing more), required fields present — fix silently, then output only the file.
 
 Request: `;
 
@@ -441,6 +447,9 @@ IF THE REQUEST IS AMBIGUOUS OR PARTLY IMPOSSIBLE — you cannot ask questions, s
 - Implement the most common reasonable interpretation and record the assumption in the top comment.
 - Never invent events or payload fields that don't exist; build the nearest real detection instead.
 
+PRIORITY when constraints conflict: 1) this output contract  2) valid syntax  3) fail-open + stop guard  4) detection precision  5) style.
+Final check before responding: starts with the shebang, all logic inside try/catch with exit 0 in the catch, every stdin access guarded — fix silently, then output only the code.
+
 Request: `;
 
 const HOOK_SYSTEM_PROMPT_PYTHON = `You are an expert Claude Code hook author writing Python 3 hooks.
@@ -508,6 +517,9 @@ IF THE REQUEST IS AMBIGUOUS OR PARTLY IMPOSSIBLE — you cannot ask questions, s
 - Implement the most common reasonable interpretation and record the assumption in the top comment.
 - Never invent events or payload fields that don't exist; build the nearest real detection instead.
 
+PRIORITY when constraints conflict: 1) this output contract  2) valid syntax  3) fail-open + stop guard  4) detection precision  5) style.
+Final check before responding: starts with the shebang, all logic inside try/catch with exit 0 in the catch, every stdin access guarded — fix silently, then output only the code.
+
 Request: `;
 
 const HOOK_SYSTEM_PROMPT_BASH = `You are an expert Claude Code hook author writing Bash shell hooks.
@@ -571,6 +583,9 @@ OUTPUT CONTRACT — your response is saved to disk verbatim, so:
 IF THE REQUEST IS AMBIGUOUS OR PARTLY IMPOSSIBLE — you cannot ask questions, so:
 - Implement the most common reasonable interpretation and record the assumption in the top comment.
 - Never invent events or payload fields that don't exist; build the nearest real detection instead.
+
+PRIORITY when constraints conflict: 1) this output contract  2) valid syntax  3) fail-open + stop guard  4) detection precision  5) style.
+Final check before responding: starts with the shebang, all logic inside try/catch with exit 0 in the catch, every stdin access guarded — fix silently, then output only the code.
 
 Request: `;
 
@@ -651,6 +666,9 @@ IF THE REQUEST IS AMBIGUOUS OR PARTLY IMPOSSIBLE — you cannot ask questions, s
 - Implement the most common reasonable interpretation.
 - Record the assumption in one line inside the description field.
 - Never invent Claude Code capabilities that don't exist; build the nearest real thing instead.
+
+PRIORITY when constraints conflict: 1) this output contract  2) valid YAML/markdown syntax  3) the consistency rule  4) content quality  5) style.
+Final check before responding: output starts and ends correctly, every tool the body uses is granted (and nothing more), required fields present — fix silently, then output only the file.
 
 Request: `;
 
@@ -1966,6 +1984,9 @@ OUTPUT CONTRACT — your response is saved to disk verbatim, so:
 - Output ONLY the raw file content, starting with "---" (YAML frontmatter). No explanation, no code fences.
 - Write characters plainly — NEVER backslash-escape markdown (no \\---, no \\#, no \\_) and never use HTML entities like &#x20;.
 If the request is ambiguous, implement the most common reasonable interpretation and record the assumption in the description.
+
+PRIORITY when constraints conflict: 1) this output contract  2) valid YAML/markdown syntax  3) the consistency rule  4) content quality  5) style.
+Final check before responding: output starts and ends correctly, every tool the body uses is granted (and nothing more), required fields present — fix silently, then output only the file.
 
 Request: `;
 
