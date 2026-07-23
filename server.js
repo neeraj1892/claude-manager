@@ -118,9 +118,11 @@ BODY STRUCTURE (Pareto: when_to_use + numbered steps deliver 80% of value):
   - First line: one sentence stating what this skill does and its output.
   - Steps: 3-7 numbered items (Miller's Law). Each step is complete and actionable.
   - Show the exact output format with a realistic example (Humphrey: seeing = understanding).
+  - Any step that runs a command states what to do if it fails (Gilbert: own the outcome —
+    "if gh is missing, use the git CLI equivalent", not silent failure).
   - One short edge-case paragraph at the end. No more.
 
-EXAMPLE of a production-quality skill:
+===== BEGIN EXAMPLE (a production-quality skill) =====
 
 ---
 name: pr-review
@@ -167,13 +169,21 @@ Review a pull request and produce a structured findings report.
 5. If no issues found, write "LGTM — no issues found" and stop.
 
 If the PR exceeds 500 files, ask which directory to focus on first.
----
+
+===== END EXAMPLE =====
 
 Now produce the SKILL.md content for the following request.
-STRICT RULES — violation means failure:
-- Output ONLY the raw markdown text. Your response IS the file content.
-- Do NOT use any tools. Do NOT write any files to disk.
-- Do NOT explain, summarize, or wrap the output. Start with "---" (the YAML frontmatter fence).
+
+OUTPUT CONTRACT — your response is saved to disk verbatim, so:
+- Output ONLY the raw markdown text. No explanation, no wrapping, no code fences.
+- Start with "---" (the YAML frontmatter fence). End with the last line of the file.
+- Write characters plainly — NEVER backslash-escape markdown (no \\---, no \\#, no \\_) and never use HTML entities like &#x20;.
+- Do NOT use any tools. Do NOT write files.
+
+IF THE REQUEST IS AMBIGUOUS OR PARTLY IMPOSSIBLE — you cannot ask questions, so:
+- Implement the most common reasonable interpretation.
+- Record the assumption in one line inside the description field.
+- Never invent Claude Code capabilities that don't exist; build the nearest real thing instead.
 
 Request: `;
 
@@ -191,6 +201,8 @@ FRONTMATTER (Conway's Law: structure mirrors responsibility — NB: agent fields
                Options: Bash, Read, Edit, Write, Grep, Glob, WebFetch, WebSearch, Agent, mcp__<server>
   disallowedTools: Tools to strip from the inherited set (e.g. Write, or mcp__github for a whole server).
   permissionMode: default | acceptEdits | dontAsk | bypassPermissions | plan — how much it may do unprompted.
+               Omit unless the job needs it (Falkland: don't decide what you don't have to).
+               NEVER emit bypassPermissions unless the request explicitly asks for it.
   model:       sonnet | opus | haiku | inherit (default inherit). Cheap agents on haiku save money.
   maxTurns:    Cap on agentic turns — set for agents that could loop.
   skills:      Skills to preload into the agent at startup (full content injected).
@@ -205,17 +217,14 @@ BODY STRUCTURE (Pareto: description + first two steps = 80% of agent value):
   - Output contract: exact format returned to the orchestrator.
   - Constraints: what this agent does NOT do (prevents scope creep).
 
-EXAMPLE of a production-quality agent:
+===== BEGIN EXAMPLE (a production-quality agent) =====
 
 ---
 name: security-auditor
 description: >
   Use when the user asks to audit code for security issues, check for vulnerabilities,
-  or scan for OWASP issues. Performs static analysis and returns a JSON report with
-  severity-ranked findings. Does NOT fix issues — reports only.
-when_to_use: >
-  Use when user says "security audit", "check for vulnerabilities", "is this secure",
-  "OWASP scan", "find security bugs", or "audit my auth".
+  scan for OWASP issues, or says "is this secure". Performs static analysis and returns
+  a JSON report with severity-ranked findings. Does NOT fix issues — reports only.
 tools: Bash, Read
 ---
 
@@ -255,13 +264,21 @@ File path, directory, or code snippet from the user's argument or message.
 - Do NOT modify any files.
 - Do NOT execute the code being reviewed.
 - Do NOT report style issues (linter's job, not this agent's).
----
+
+===== END EXAMPLE =====
 
 Now produce the agent SKILL.md content for the following request.
-STRICT RULES — violation means failure:
-- Output ONLY the raw markdown text. Your response IS the file content.
-- Do NOT use any tools. Do NOT write any files to disk.
-- Do NOT explain, summarize, or wrap the output. Start with "---" (the YAML frontmatter fence).
+
+OUTPUT CONTRACT — your response is saved to disk verbatim, so:
+- Output ONLY the raw markdown text. No explanation, no wrapping, no code fences.
+- Start with "---" (the YAML frontmatter fence). End with the last line of the file.
+- Write characters plainly — NEVER backslash-escape markdown (no \\---, no \\#, no \\_) and never use HTML entities like &#x20;.
+- Do NOT use any tools. Do NOT write files.
+
+IF THE REQUEST IS AMBIGUOUS OR PARTLY IMPOSSIBLE — you cannot ask questions, so:
+- Implement the most common reasonable interpretation.
+- Record the assumption in one line inside the description field.
+- Never invent Claude Code capabilities that don't exist; build the nearest real thing instead.
 
 Request: `;
 
@@ -312,7 +329,7 @@ CANONICAL STRUCTURE (follow exactly — Kidlin: the template IS the spec):
     }
   });
 
-FOUR LAWS (non-negotiable):
+FIVE LAWS (non-negotiable):
   1. FAIL-OPEN (Pareto): ALL logic inside try/catch. exit 0 in the catch block.
      A hook that crashes and blocks Claude is worse than a hook that does nothing.
   2. POSTEL (Occam): write JSON to stdout ONLY when sending a control signal.
@@ -321,6 +338,10 @@ FOUR LAWS (non-negotiable):
      GOOD: block-rm-rf.mjs, log-file-writes.mjs  BAD: hook1.mjs, my-hook.mjs
   4. STOP GUARD (Humphrey): Stop hooks that do work will loop forever.
      Always check stop_hook_active and exit 0 immediately when true.
+  5. MURPHY: assume stdin may be empty, fields missing, and values the wrong type —
+     guard every access ((input.tool_input && input.tool_input.command) || '').
+     Side effects get their own try/catch so they can never take the hook down.
+     Never write secrets or full file contents to logs.
 
 EXAMPLE — PreToolUse hook that blocks dangerous Bash commands:
 
@@ -354,10 +375,15 @@ rl.on('close', () => {
 });
 
 Now produce the hook .mjs file content for the following request.
-STRICT RULES — violation means failure:
-- Output ONLY raw JavaScript. Your response IS the file content.
-- Do NOT use any tools. Do NOT write any files to disk.
-- Do NOT explain, summarize, or add markdown. Start with "#!/usr/bin/env node".
+
+OUTPUT CONTRACT — your response is saved to disk verbatim, so:
+- Output ONLY raw JavaScript. No explanation, no markdown, no code fences.
+- Start with "#!/usr/bin/env node". End with the last line of the file.
+- Do NOT use any tools. Do NOT write files.
+
+IF THE REQUEST IS AMBIGUOUS OR PARTLY IMPOSSIBLE — you cannot ask questions, so:
+- Implement the most common reasonable interpretation and record the assumption in the top comment.
+- Never invent events or payload fields that don't exist; build the nearest real detection instead.
 
 Request: `;
 
@@ -402,13 +428,22 @@ try:
 except Exception:
     sys.exit(0)  # FAIL-OPEN: crashing hook must never block Claude
 
-FOUR LAWS (non-negotiable):
+FIVE LAWS (non-negotiable):
   1. FAIL-OPEN: ALL logic inside try/except. sys.exit(0) in the except block.
   2. POSTEL: print JSON to stdout ONLY when sending a control signal.
   3. KIDLIN: name file after what it prevents/produces. block-rm-rf.py, log-writes.py
   4. STOP GUARD: Stop hooks must check stop_hook_active and exit 0 immediately when True.
+  5. MURPHY: assume stdin may be empty and fields missing — use data.get() everywhere.
+     Side effects get their own try/except. Never write secrets to logs.
 
-Output ONLY the raw Python file — start with #!/usr/bin/env python3. No markdown. No explanation.
+OUTPUT CONTRACT — your response is saved to disk verbatim, so:
+- Output ONLY raw Python. No explanation, no markdown, no code fences.
+- Start with "#!/usr/bin/env python3". End with the last line of the file.
+- Do NOT use any tools. Do NOT write files.
+
+IF THE REQUEST IS AMBIGUOUS OR PARTLY IMPOSSIBLE — you cannot ask questions, so:
+- Implement the most common reasonable interpretation and record the assumption in the top comment.
+- Never invent events or payload fields that don't exist; build the nearest real detection instead.
 
 Request: `;
 
@@ -450,13 +485,22 @@ STOP_ACTIVE=$(get_field stop_hook_active)
 
 exit 0  # FAIL-OPEN
 
-FOUR LAWS:
+FIVE LAWS:
   1. FAIL-OPEN: Always exit 0 on errors. A crashing hook must never block Claude.
   2. POSTEL: printf JSON to stdout ONLY when sending a control signal.
   3. KIDLIN: name file after what it prevents/produces. block-rm-rf.sh, log-writes.sh
   4. STOP GUARD: Always check STOP_ACTIVE and exit 0 immediately when True.
+  5. MURPHY: every get_field may return "" — guard with defaults, quote every
+     variable expansion. Never write secrets to logs.
 
-Output ONLY the raw Bash script — start with #!/usr/bin/env bash. No markdown. No explanation.
+OUTPUT CONTRACT — your response is saved to disk verbatim, so:
+- Output ONLY raw Bash. No explanation, no markdown, no code fences.
+- Start with "#!/usr/bin/env bash". End with the last line of the file.
+- Do NOT use any tools. Do NOT write files.
+
+IF THE REQUEST IS AMBIGUOUS OR PARTLY IMPOSSIBLE — you cannot ask questions, so:
+- Implement the most common reasonable interpretation and record the assumption in the top comment.
+- Never invent events or payload fields that don't exist; build the nearest real detection instead.
 
 Request: `;
 
@@ -513,10 +557,17 @@ Generate a changelog of commits since the last release tag.
 5. If there are no commits since the tag, say so and stop.
 
 Now produce the command markdown for the following request.
-STRICT RULES — violation means failure:
-- Output ONLY the raw markdown text. Your response IS the file content.
-- Do NOT use any tools. Do NOT write any files to disk.
-- Do NOT explain or wrap the output. Start with "---" (frontmatter) or "# /" (heading).
+
+OUTPUT CONTRACT — your response is saved to disk verbatim, so:
+- Output ONLY the raw markdown text. No explanation, no wrapping, no code fences.
+- Start with "---" (frontmatter) or "# /" (heading). End with the last line of the file.
+- Write characters plainly — NEVER backslash-escape markdown (no \\---, no \\#, no \\_) and never use HTML entities like &#x20;.
+- Do NOT use any tools. Do NOT write files.
+
+IF THE REQUEST IS AMBIGUOUS OR PARTLY IMPOSSIBLE — you cannot ask questions, so:
+- Implement the most common reasonable interpretation.
+- Record the assumption in one line inside the description field.
+- Never invent Claude Code capabilities that don't exist; build the nearest real thing instead.
 
 Request: `;
 
@@ -921,6 +972,9 @@ Valid settings.json keys:
 - outputStyle: string
 - alwaysThinkingEnabled: boolean
 Never invent keys that are not real Claude Code settings.
+If the request cannot be satisfied with valid settings.json keys, return
+{"explanation":"why not, and where this IS configured (e.g. keybindings.json, a hook, CLAUDE.md)","patch":{}}
+— an empty patch is better than an invented key.
 
 CURRENT settings.json:
 `;
@@ -1680,18 +1734,29 @@ Principles to apply:
 - Kidlin: if a step can't be written simply, rewrite it until it can.
 - Humphrey: show a realistic output example so the user sees exactly what they'll get.
 
+Method (Kidlin: name the problem before solving it):
+1. Internally identify the 2-3 weakest points of the original (vague triggers?
+   untestable steps? missing output example? no failure handling?).
+2. Rewrite to fix exactly those. Preserve everything that already works — the
+   name, working steps, and frontmatter fields that still serve (Falkland:
+   change nothing you don't have to). Improvement is not reinvention.
+
 {{FEEDBACK}}{{VALIDATION}}
 
 ORIGINAL {{TYPE_UPPER}} TO IMPROVE:
 `;
 
-const IMPROVE_PROMPT = (type, feedback) => {
+const IMPROVE_PROMPT = (type, feedback, original = '') => {
   const feedbackSection = feedback
     ? `User feedback (what needs fixing/improving):\n${feedback}\n\nIncorporate this feedback precisely.\n\n`
     : 'Apply best practices: sharpen trigger phrases, tighten steps (max 7), remove filler, improve the output example to be concrete and realistic.\n\n';
+  // Language-aware: an improved Python/Bash hook must keep ITS shebang, not be
+  // corrupted into a Node one.
+  const firstLine = (original.split('\n', 1)[0] || '').trim();
+  const shebang = firstLine.startsWith('#!') ? firstLine : '#!/usr/bin/env node';
   const validation = (type === 'skill' || type === 'agent')
-    ? 'Output ONLY the raw improved file content. Start with "---" (YAML frontmatter). No explanation.'
-    : 'Output ONLY the raw improved code. Start with "#!/usr/bin/env node". No explanation.';
+    ? 'Output ONLY the raw improved file content. Start with "---" (YAML frontmatter). Write markdown plainly — never backslash-escape it. No explanation.'
+    : `Output ONLY the raw improved code. Start with "${shebang}". No explanation.`;
   return getPrompt('improve')
     .replaceAll('{{TYPE_UPPER}}', type.toUpperCase())
     .replaceAll('{{TYPE}}', type)
@@ -1704,7 +1769,7 @@ const IMPROVE_PROMPT = (type, feedback) => {
 app.post('/api/ai/improve-skill', async (req, res) => {
   const { type = 'skill', content, feedback, provider } = req.body;
   if (!content?.trim()) return res.status(400).json({ error: 'content is required' });
-  const fullPrompt = IMPROVE_PROMPT(type, feedback?.trim() || null) + content.trim();
+  const fullPrompt = IMPROVE_PROMPT(type, feedback?.trim() || null, content) + content.trim();
   try {
     let improved;
     if (provider === 'openrouter') {
@@ -1807,6 +1872,8 @@ RULES (no exceptions):
 - Miller: max 6 components total
 - All names: lowercase-hyphens only, unique within the workflow
 - setupGuide: 3–5 concise plain-text steps that explain how to activate and use the workflow
+- The LAST setupGuide step MUST tell the user how to VERIFY it works (a command to run
+  or behavior to observe) — a workflow you can't verify isn't finished (Gilbert)
 `;
 
 app.post('/api/ai/generate-workflow-plan', async (req, res) => {
@@ -1927,6 +1994,11 @@ Rules:
 - components MUST use exact names from the inventory — never invent installed resources.
 - missing lists only genuinely absent pieces. Max 6 components + 4 missing.
 - If hooks must be wired to lifecycle events (PreToolUse etc.), explain in setupGuide.
+- The LAST setupGuide step MUST tell the user how to VERIFY the workflow works
+  (a command to run or behavior to observe).
+- "no" is a valid, honest answer (Falkland). If nothing installed genuinely fits,
+  say feasible:"no" with an empty components array — never force a composition
+  to look helpful.
 `;
 
 app.post('/api/ai/compose-workflow', async (req, res) => {
@@ -2004,20 +2076,26 @@ Component shape:
   "type": "skill" | "agent" | "hook" | "command",
   "name": "kebab-case-name",
   "description": "One sentence describing this component's role.",
+  "event": "hooks ONLY: the lifecycle event to wire to (PreToolUse, PostToolUse, Stop, SessionStart, UserPromptSubmit...)",
+  "matcher": "hooks ONLY: tool-name regex for PreToolUse/PostToolUse (e.g. \\"Bash\\", \\"Write|Edit\\"), empty string otherwise",
   "content": "...file content..."
 }
 
 Content rules (STRICT — violations invalidate the output):
-- skill/agent: MUST start with "---" (YAML frontmatter), use all relevant fields (name, description, trigger for skills; name, description, model for agents)
+- skill/agent: MUST start with "---" (YAML frontmatter), use all relevant fields (name, description, when_to_use for skills; name, description, tools for agents)
 - hook: MUST start with "#!/usr/bin/env node" and use readline+stdin protocol (process.stdin / rl.on('line'))
+- hook content MUST be fail-open (all logic in try/catch, exit 0 in the catch) and Stop hooks must check stop_hook_active
+- EVERY hook component MUST include "event" — an unwired hook never fires (Murphy)
 - command: plain markdown with a # heading and usage instructions
 - All names: lowercase, hyphens only (no spaces, no underscores)
+- "content" values are JSON strings — escape newlines as \\n and quotes as \\"; invalid JSON invalidates the entire output
 
 Design laws to apply:
 - Pareto: pick the 20% of components that deliver 80% of the goal's value
 - Occam: if a goal can be met with 2 components, don't add a third
 - Miller: cap at 6 components total
 - Kidlin: make each component's purpose unambiguous from its description alone
+- Gilbert: the LAST setupGuide step tells the user how to VERIFY the workflow works (a command to run or behavior to observe)
 
 Goal: `;
 
@@ -3257,6 +3335,8 @@ hookScript rules — violations invalidate the output:
 - FAIL-OPEN: all logic inside try/catch, exit 0 in catch — a crashing hook must never block Claude.
 - Performs the user's requested action: block (stdout {"decision":"block","reason":"[<name>] ..."}), log to a file, notify, or redirect Claude.
 - Prefix any user-visible reason/log line with the event name in brackets so it is recognizable.
+- If the condition cannot be reliably detected from any built-in event's payload, pick the
+  closest event, detect what IS detectable, and state the limitation honestly in "how".
 
 Request: `;
 

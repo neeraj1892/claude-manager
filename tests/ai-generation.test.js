@@ -335,3 +335,52 @@ test('generate-workflow (full) returns a component list', async () => {
   assert.ok(Array.isArray(data.components) && data.components.length >= 1);
   assert.equal((await s.api('POST', '/ai/generate-workflow', {})).status, 400);
 });
+
+// ── Meta-prompt review regressions (output contract, agent fields, hook wiring) ──
+
+test('REGRESSION: agent prompt example no longer contains when_to_use (not an agent field)', async () => {
+  await s.api('POST', '/ai/generate-skill', { prompt: 'an agent', provider: 'claude-cli', type: 'agent' });
+  const p = s.readShimPrompt();
+  assert.ok(!p.includes('when_to_use'), 'agents route via description; when_to_use is a skill field');
+  assert.ok(p.includes('NEVER emit bypassPermissions unless the request explicitly asks'),
+    'agent prompt defaults to safe permissions (Falkland)');
+});
+
+test('generation prompts carry the output contract: anti-escape rule + ambiguity channel', async () => {
+  await s.api('POST', '/ai/generate-skill', { prompt: 'a skill', provider: 'claude-cli', type: 'skill' });
+  let p = s.readShimPrompt();
+  assert.ok(p.includes('NEVER backslash-escape markdown'), 'skill prompt forbids chat-style escaping at the source');
+  assert.ok(p.includes('IF THE REQUEST IS AMBIGUOUS'), 'skill prompt has a defined uncertainty channel');
+  assert.ok(!p.includes('violation means failure'), 'threat framing replaced by the contract');
+  await s.api('POST', '/ai/generate-skill', { prompt: 'a hook', provider: 'claude-cli', type: 'hook', hookLang: '.mjs' });
+  p = s.readShimPrompt();
+  assert.ok(p.includes('FIVE LAWS'), 'hook prompt gained the Murphy law');
+  assert.ok(p.includes('IF THE REQUEST IS AMBIGUOUS'), 'hook prompt has the uncertainty channel');
+});
+
+test('REGRESSION: full workflow generation prompt demands event/matcher for hooks', async () => {
+  await s.api('POST', '/ai/generate-workflow', { goal: 'guard commits', provider: 'claude-cli' });
+  const p = s.readShimPrompt();
+  assert.ok(p.includes('EVERY hook component MUST include "event"'),
+    'one-shot workflow prompt now supports auto-wiring (was missing, unlike the plan prompt)');
+  assert.ok(p.includes('when_to_use for skills'), 'stale "trigger" field name corrected');
+  assert.ok(p.includes('VERIFY'), 'setup guide must end with a verification step (Gilbert)');
+});
+
+test('REGRESSION: improving a Python hook keeps its shebang (not corrupted to Node)', async () => {
+  await s.api('POST', '/ai/improve-skill', {
+    content: '#!/usr/bin/env python3\nimport sys\nsys.exit(0)\n', provider: 'claude-cli', type: 'hook',
+  });
+  const p = s.readShimPrompt();
+  assert.ok(p.includes('Start with "#!/usr/bin/env python3"'), 'validation derived from the original shebang');
+  assert.ok(!p.includes('Start with "#!/usr/bin/env node"'), 'node shebang not forced onto a python hook');
+});
+
+test('compose prompt allows an honest "no"; settings prompt has an empty-patch escape hatch', async () => {
+  await s.api('POST', '/skills', { name: 'compose-skill', content: '---\nname: compose-skill\ndescription: d\n---\nbody' });
+  await s.api('POST', '/ai/compose-workflow', { goal: 'INVENTORY OF INSTALLED RESOURCES probe', provider: 'claude-cli' });
+  assert.ok(s.readShimPrompt().includes('"no" is a valid, honest answer'), 'compose may decline (Falkland)');
+  await s.api('POST', '/ai/suggest-settings', { request: 'make claude sentient', provider: 'claude-cli' });
+  assert.ok(s.readShimPrompt().includes('an empty patch is better than an invented key'),
+    'settings prompt has a defined failure channel');
+});
