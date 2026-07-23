@@ -28,6 +28,17 @@ test('registry lists every prompt with defaults and metadata', async () => {
   assert.deepEqual(ce.tokens, ['{{EVENTS}}', '{{LANG_RULES}}', '{{EXT}}'], 'template tokens declared');
 });
 
+test('customizing snapshots the default hash; drift is reported; reset clears it', async () => {
+  await s.api('PUT', '/prompts/explain', { content: 'my custom explain prompt' });
+  let p = (await s.api('GET', '/prompts')).data.find(x => x.id === 'explain');
+  assert.equal(p.isCustomized, true);
+  assert.equal(p.defaultChanged, false, 'default has not changed since the customization');
+  await s.api('DELETE', '/prompts/explain');
+  p = (await s.api('GET', '/prompts')).data.find(x => x.id === 'explain');
+  assert.equal(p.isCustomized, false);
+  assert.equal(p.defaultChanged, false, 'reset clears the snapshot');
+});
+
 test('an override is actually used by generation', async () => {
   const custom = 'MY_CUSTOM_SKILL_PROMPT — produce a SKILL.md.\n\nRequest: ';
   const put = await s.api('PUT', '/prompts/skill-generate', { content: custom });

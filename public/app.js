@@ -982,6 +982,26 @@ document.getElementById('checkUpdatesBtn').onclick = async () => {
             : '<span class="badge badge-success">✓ In sync with docs</span>'}
         </div>`);
     }
+    // Settings keys
+    const sk = r.settingsKeys || {};
+    if (sk.error) {
+      rows.push(`<div class="card" style="padding:12px 14px;font-size:12px;color:var(--danger)">⚙️ Settings keys: ${escHtml(sk.error)}</div>`);
+    } else {
+      rows.push(`
+        <div class="card" style="display:flex;align-items:center;gap:12px;padding:12px 14px">
+          <span style="font-size:18px">⚙️</span>
+          <div style="flex:1;min-width:0">
+            <div style="font-weight:600;font-size:13px">Settings-assistant key catalog</div>
+            <div style="font-size:12px;color:var(--text-muted)">
+              The AI settings assistant knows ${sk.knownCount} keys · docs list ${sk.foundCount}
+              ${sk.newKeys?.length ? ` · <strong style="color:var(--warning)">new: ${sk.newKeys.map(escHtml).join(', ')}</strong>` : ''}
+            </div>
+          </div>
+          ${sk.newKeys?.length
+            ? `<button class="btn btn-primary btn-sm" id="applySettingsKeysBtn">+ Teach the assistant ${sk.newKeys.length} key${sk.newKeys.length > 1 ? 's' : ''}</button>`
+            : '<span class="badge badge-success">✓ In sync with docs</span>'}
+        </div>`);
+    }
     rows.push(`<div style="font-size:11px;color:var(--text-dim)">Claude Manager ${escHtml(r.appVersion)} · sources: registry.npmjs.org, docs.claude.com</div>`);
     out.innerHTML = rows.join('');
 
@@ -989,6 +1009,14 @@ document.getElementById('checkUpdatesBtn').onclick = async () => {
       e.target.disabled = true; e.target.textContent = 'Updating…';
       try { const u = await api('POST', '/updates/cli', {}); toast(u.output || 'Claude Code updated'); btn.click(); }
       catch (err) { toast('Update failed: ' + err.message, 'error'); e.target.disabled = false; e.target.textContent = '↑ Run claude update'; }
+    });
+    document.getElementById('applySettingsKeysBtn')?.addEventListener('click', async (e) => {
+      e.target.disabled = true;
+      try {
+        await api('POST', '/updates/settings-keys/apply', { keys: sk.newKeys });
+        toast(`Settings assistant now knows ${sk.newKeys.length} more key${sk.newKeys.length > 1 ? 's' : ''}`);
+        btn.click();
+      } catch (err) { toast(err.message, 'error'); e.target.disabled = false; }
     });
     document.getElementById('applyHookEventsBtn')?.addEventListener('click', async (e) => {
       e.target.disabled = true;
@@ -1019,6 +1047,8 @@ async function loadPromptsList() {
         <div class="list-main">
           <div class="list-title">${escHtml(p.label)}
             ${p.isCustomized ? '<span class="badge badge-warning" style="font-size:10px;margin-left:6px" title="You have edited this prompt — the built-in default is not being used">✎ customized</span>' : ''}
+            ${p.defaultChanged === true ? '<span class="badge badge-danger" style="font-size:10px;margin-left:6px" title="The built-in default improved AFTER you customized this — your version is missing those improvements. Open it to compare, or reset ↺ to adopt the new default.">⬆ default improved</span>' : ''}
+            ${p.defaultChanged === null ? '<span class="badge badge-muted" style="font-size:10px;margin-left:6px" title="Customized before change-tracking existed — the built-in default may have improved since. Compare or reset ↺ to be sure.">default may have changed</span>' : ''}
           </div>
           <div class="list-sub">Used by: ${escHtml(p.usedBy)}${p.tokens.length ? ` · must keep: ${p.tokens.map(escHtml).join(' ')}` : ''}</div>
         </div>
@@ -3101,6 +3131,8 @@ function renderItemGrid(gridId, items, type, icon, onEdit, onDelete, useDisplayN
     if (item.allowedTools && item.allowedTools.length) badges.push(`<span class="badge badge-success" style="font-size:10px;padding:1px 6px" title="Pre-approved — runs without permission prompts: ${escHtml(item.allowedTools.join(', '))}">🔓 ${item.allowedTools.length} pre-approved</span>`);
     if (item.disallowedTools && item.disallowedTools.length) badges.push(`<span class="badge badge-warning" style="font-size:10px;padding:1px 6px" title="Blocked while this skill runs: ${escHtml(item.disallowedTools.join(', '))}">⛔ ${item.disallowedTools.length} blocked</span>`);
     if (item.locationLabel) badges.push(`<span class="badge badge-warning" style="font-size:10px;padding:1px 6px" title="Lives outside the ${type}s folder — shipped by a plugin or skill">📦 ${escHtml(item.locationLabel)}</span>`);
+    const lintIssues = [...(item.lint?.missing || []), ...(item.lint?.suggestions || [])];
+    if (lintIssues.length) badges.push(`<span class="badge badge-danger" style="font-size:10px;padding:1px 6px" title="Body uses tools the frontmatter never grants — it will prompt for permission at runtime. ${escHtml(lintIssues.join(' · '))}. Fix via ✨ Improve or ✎ Edit.">⚠ grants incomplete</span>`);
 
     return `
       <div class="skill-card type-${escHtml(type)}">
@@ -5632,7 +5664,9 @@ async function runSkillGeneration() {
       if (found) creatorContent = found.content;
     }
     const hookLang = skillGenType === 'hook' ? skillGenHookExt : undefined;
-    const { content } = await api('POST', '/ai/generate-skill', { prompt, provider: skillGenProvider, type: skillGenType, creatorContent, hookLang });
+    const { content, lint } = await api('POST', '/ai/generate-skill', { prompt, provider: skillGenProvider, type: skillGenType, creatorContent, hookLang });
+    if (lint?.autoAdded?.length) toast(`🔓 Added missing tool grant${lint.autoAdded.length > 1 ? 's' : ''}: ${lint.autoAdded.join(', ')}`, 'info');
+    if (lint?.suggestions?.length) toast('⚠ ' + lint.suggestions[0], 'error');
 
     const nameField = document.getElementById('skillGenName');
     nameField.value = meta.extractName(content);
@@ -5819,12 +5853,14 @@ document.getElementById('improveRunBtn').onclick = async () => {
     apiProvider === 'openrouter' ? 'Calling OpenRouter API…' : 'Running claude -p…';
   _showImproveState('loading');
   try {
-    const { content } = await api('POST', '/ai/improve-skill', {
+    const { content, lint } = await api('POST', '/ai/improve-skill', {
       type:     _improveState.type,
       content:  _improveState.originalContent,
       feedback: feedback || null,
       provider: apiProvider,
     });
+    if (lint?.autoAdded?.length) toast(`🔓 Added missing tool grant${lint.autoAdded.length > 1 ? 's' : ''}: ${lint.autoAdded.join(', ')}`, 'info');
+    if (lint?.suggestions?.length) toast('⚠ ' + lint.suggestions[0], 'error');
     _showImproveState('review');
     await new Promise(r => setTimeout(r, 50));
     if (_improveEditor) { _improveEditor.dispose(); _improveEditor = null; }

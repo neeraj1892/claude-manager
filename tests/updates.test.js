@@ -19,6 +19,10 @@ const DOCS_PAGE = [...BUILTIN, 'WorkspaceChange']
   .map(e => `${e} hook: the ${e} event fires appropriately. Configure ${e} in settings.`)
   .join('\n') + '\nAlso mentioned twice only: RareStart RareStart\nQuickStart QuickStart QuickStart QuickStart';
 
+// Fixture settings docs: known keys + two the assistant catalog doesn't know yet.
+const SETTINGS_PAGE = ['model', 'permissions', 'env', 'skillOverrides', 'newFancyKey', 'spinnerTipsEnabled']
+  .map(k => `| \`${k}\` | What ${k} does |`).join('\n') + '\n| `Bash` | a tool, not a key |';
+
 let s, fixture;
 const FIX_PORT = 4695;
 
@@ -26,6 +30,7 @@ before(async () => {
   fixture = http.createServer((req, res) => {
     if (req.url === '/npm-latest') { res.setHeader('Content-Type', 'application/json'); return res.end(JSON.stringify({ version: '10.5.0' })); }
     if (req.url === '/docs-hooks') { res.setHeader('Content-Type', 'text/plain'); return res.end(DOCS_PAGE); }
+    if (req.url === '/docs-settings') { res.setHeader('Content-Type', 'text/plain'); return res.end(SETTINGS_PAGE); }
     res.statusCode = 404; res.end('nope');
   });
   await new Promise(r => fixture.listen(FIX_PORT, r));
@@ -33,6 +38,7 @@ before(async () => {
     env: {
       UPDATES_NPM_URL: `http://127.0.0.1:${FIX_PORT}/npm-latest`,
       UPDATES_DOCS_URL: `http://127.0.0.1:${FIX_PORT}/docs-hooks`,
+      UPDATES_SETTINGS_URL: `http://127.0.0.1:${FIX_PORT}/docs-settings`,
     },
   });
 });
@@ -90,6 +96,25 @@ test('hooks/wire accepts docs-discovered (dynamic) events too', async () => {
   const { status, data } = await s.api('POST', '/hooks/wire', { event: 'WorkspaceChange', filename: 'ws-watch.mjs' });
   assert.equal(status, 200, JSON.stringify(data));
   assert.equal(data.event, 'WorkspaceChange');
+});
+
+test('updates/check discovers NEW settings keys from docs (tools/known keys excluded)', async () => {
+  const { data } = await s.api('GET', '/updates/check');
+  assert.ok(data.settingsKeys, JSON.stringify(data));
+  assert.ok(data.settingsKeys.newKeys.includes('newFancyKey'), JSON.stringify(data.settingsKeys));
+  assert.ok(data.settingsKeys.newKeys.includes('spinnerTipsEnabled'));
+  assert.ok(!data.settingsKeys.newKeys.includes('model'), 'known keys not reported as new');
+  assert.ok(!data.settingsKeys.newKeys.includes('Bash'), 'capitalized tool names filtered');
+});
+
+test('applying settings keys teaches the AI settings assistant (doc-synced catalog)', async () => {
+  const r = await s.api('POST', '/updates/settings-keys/apply', { keys: ['newFancyKey'] });
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+  await s.api('POST', '/ai/suggest-settings', { request: 'enable the fancy thing', provider: 'claude-cli' });
+  assert.ok(s.readShimPrompt().includes('newFancyKey'), 'doc-synced key injected into the assistant prompt');
+  const check = await s.api('GET', '/updates/check');
+  assert.ok(!check.data.settingsKeys.newKeys.includes('newFancyKey'), 'applied key no longer reported as new');
+  assert.equal((await s.api('POST', '/updates/settings-keys/apply', { keys: ['Bad key!'] })).status, 400, 'validation');
 });
 
 test('updates/cli runs `claude update` through the CLI', async () => {

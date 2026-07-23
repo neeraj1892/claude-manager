@@ -1414,6 +1414,7 @@ textarea:focus, select:focus, .mkt-search:focus {
 .badge-accent  { background: color-mix(in srgb, var(--c-skill) 14%, transparent);    color: var(--c-skill); }
 .badge-success { background: color-mix(in srgb, var(--c-workflow) 14%, transparent); color: var(--c-workflow); }
 .badge-warning { background: color-mix(in srgb, var(--c-hook) 14%, transparent);     color: var(--c-hook); }
+.badge-danger  { background: color-mix(in srgb, var(--danger) 14%, transparent);     color: var(--danger); }
 .mkt-badge-installed { background: var(--accent2-dim); color: var(--accent2); }
 
 /* Section headers: Apple hairline, no decoration */

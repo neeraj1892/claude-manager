@@ -104,8 +104,9 @@ FRONTMATTER (use only what the skill needs — Occam):
   when_to_use: CRITICAL — list exact phrases a real user would type to trigger this skill.
                Vague triggers = missed activations. Specific triggers = reliable invocation.
   argument-hint: (if skill takes an arg) Short placeholder, e.g. "[filename]" or "[PR number]"
-  allowed-tools: (if the skill's steps use tools) Pre-approve them so the skill runs WITHOUT
-               permission prompts for that turn. Space- or comma-separated rules:
+  allowed-tools: ALWAYS set this when the steps use tools — derive it from the steps you
+               write, even when the user never mentioned permissions. Pre-approves them so
+               the skill runs WITHOUT permission prompts for that turn. Space/comma rules:
                allowed-tools: Read Grep Bash(git add *) Bash(git commit *)
                Grant only what the steps actually need — never a blanket Bash.
   disallowed-tools: (rarely) Tools removed from the pool while the skill runs, e.g. Write.
@@ -216,7 +217,8 @@ FRONTMATTER (Conway's Law: structure mirrors responsibility — NB: agent fields
   name:        REQUIRED. Lowercase letters + hyphens. The agent's identity (hooks see it as agent_type).
   description: REQUIRED. ROUTING INSTRUCTIONS. Format: "Use when [trigger]. Does [actions]. Returns [output]."
                Add "use proactively" to encourage automatic delegation. One responsibility only.
-  tools:       Comma-separated. Occam: only tools the agent will actually call. Inherits ALL if omitted.
+  tools:       Comma-separated. Occam: only tools the agent will actually call. Inherits ALL if
+               omitted — too broad: ALWAYS set it explicitly, derived from the steps you write.
                Options: Bash, Read, Edit, Write, Grep, Glob, WebFetch, WebSearch, Agent, mcp__<server>
   disallowedTools: Tools to strip from the inherited set (e.g. Write, or mcp__github for a whole server).
   permissionMode: default | acceptEdits | dontAsk | bypassPermissions | plan — how much it may do unprompted.
@@ -576,7 +578,8 @@ One sentence: what this command does and what it outputs.
 
 CONSISTENCY RULE: every tool the steps use MUST appear in allowed-tools (Bash rules
 matching the exact commands the steps run), and every granted rule MUST be used by
-some step — a mismatch causes permission prompts at runtime.
+some step — a mismatch causes permission prompts at runtime. Derive allowed-tools
+from the steps even when the user never specified tools.
 
 EXAMPLE of a production-quality command:
 
@@ -1045,7 +1048,13 @@ app.post('/api/ai/suggest-settings', async (req, res) => {
   const { request, provider } = req.body;
   if (!request?.trim()) return res.status(400).json({ error: 'request is required' });
   const current = readJson(join(claudeDir, 'settings.json'));
+  // Doc-synced keys (Updates tab) extend the static catalog without a release
+  const dynKeys = loadConfig().dynamicSettingsKeys || [];
+  const dynBlock = dynKeys.length
+    ? '\n\nAdditional valid keys (synced from current docs — also allowed): ' + dynKeys.join(', ')
+    : '';
   const fullPrompt = getPrompt('suggest-settings') + JSON.stringify(current, null, 2)
+    + dynBlock
     + '\n\nUser request: ' + request.trim();
   try {
     let raw;
@@ -1095,6 +1104,88 @@ app.put('/api/settings', (req, res) => {
 
 // --- API: Skills ---
 
+// ===== TOOL-CONSISTENCY LINT =====
+// The invariant our prompts teach ("every tool the body uses must be granted")
+// enforced as code — DOET: constraints beat instructions. Heuristic on purpose:
+// word-boundary tool names + mcp__ mentions + shell-command signals.
+const LINT_PROMPTING_TOOLS = ['Edit', 'Write', 'NotebookEdit', 'WebFetch', 'WebSearch'];
+const LINT_READONLY_TOOLS  = ['Read', 'Grep', 'Glob']; // never prompt inside the cwd
+
+function detectBodyTools(body) {
+  const used = new Set();
+  for (const t of [...LINT_PROMPTING_TOOLS, ...LINT_READONLY_TOOLS, 'Bash']) {
+    if (new RegExp('\\b' + t + '\\b').test(body)) used.add(t);
+  }
+  (body.match(/mcp__[a-zA-Z0-9-]+(?:__[a-zA-Z0-9_-]+)?/g) || []).forEach(m => used.add(m));
+  if (/```(?:bash|sh|shell|console)/.test(body) || /(?:^|\n)\s*(?:\d+\.\s+)?(?:run|execute)\b[^\n]*`[^`]+`/i.test(body)) used.add('Bash');
+  return [...used];
+}
+
+function lintToolConsistency(type, content) {
+  const out = { missing: [], unused: [], suggestions: [] };
+  try {
+    const meta = parseFrontmatter(content);
+    const body = content.startsWith('---') ? content.replace(/^---\n[\s\S]*?\n---\n?/, '') : content;
+    const rules = type === 'agent' ? normalizeTools(meta.tools) : splitToolRules(meta['allowed-tools']);
+    const mcpServers = type === 'agent' ? normalizeTools(meta.mcpServers) : [];
+    const bases = new Set(rules.map(r => String(r).replace(/\(.*$/, '').trim()));
+    const used = detectBodyTools(body);
+    const covered = (u) => {
+      if (bases.has(u)) return true;
+      if (u.startsWith('mcp__')) {
+        const server = u.split('__')[1];
+        return [...bases].some(g => g === 'mcp__' + server || u === g || u.startsWith(g + '__'))
+          || mcpServers.includes(server);
+      }
+      return false;
+    };
+    for (const u of used) {
+      if (LINT_READONLY_TOOLS.includes(u)) continue;
+      if (type === 'agent' && !meta.tools) continue; // omitted tools field = inherits ALL
+      if (!covered(u)) out.missing.push(u);
+    }
+    for (const b of bases) {
+      if (LINT_READONLY_TOOLS.includes(b)) continue; // harmless extra grants
+      if (!used.some(u => u === b || (b.startsWith('mcp__') && u.startsWith(b)))) out.unused.push(b);
+    }
+    if (out.missing.includes('Bash')) {
+      // A silent blanket Bash grant is a security decision the user should make.
+      out.missing = out.missing.filter(m => m !== 'Bash');
+      out.suggestions.push('Body runs shell commands but grants no Bash rule — add Bash(<command> *) rules matching the exact commands the steps run.');
+    }
+  } catch {}
+  return out;
+}
+
+// Auto-grant: after generation/improve, if the body uses tools the frontmatter
+// never granted, add them (non-Bash only; single-line field values only).
+function enforceToolConsistency(type, content) {
+  const before = lintToolConsistency(type, content);
+  const autoAdded = [];
+  if (before.missing.length && content.startsWith('---')) {
+    const field = type === 'agent' ? 'tools' : 'allowed-tools';
+    const fmEnd = content.indexOf('\n---', 3);
+    if (fmEnd !== -1) {
+      const sep = type === 'agent' ? ', ' : ' ';
+      const lineRe = new RegExp('(\\n' + field + ':)([^\\n]*)');
+      const m = content.slice(0, fmEnd).match(lineRe);
+      if (m && m[2].trim() && !m[2].trim().startsWith('>')) {
+        content = content.slice(0, fmEnd).replace(lineRe, (_, a, b) => a + b + sep + before.missing.join(sep)) + content.slice(fmEnd);
+        autoAdded.push(...before.missing);
+      } else if (!m) {
+        content = content.slice(0, fmEnd) + `\n${field}: ${before.missing.join(sep)}` + content.slice(fmEnd);
+        autoAdded.push(...before.missing);
+      } else {
+        before.suggestions.push(`Add to ${field}: ${before.missing.join(', ')} (multiline value — not auto-edited)`);
+      }
+    }
+  }
+  const lint = lintToolConsistency(type, content);
+  lint.autoAdded = autoAdded;
+  lint.suggestions = [...new Set([...before.suggestions, ...lint.suggestions])];
+  return { content, lint };
+}
+
 app.get('/api/skills', (req, res) => {
   const skillsDir = join(claudeDir, 'skills');
   if (!existsSync(skillsDir)) return res.json([]);
@@ -1112,6 +1203,7 @@ app.get('/api/skills', (req, res) => {
         model: meta.model || '',
         allowedTools: splitToolRules(meta['allowed-tools']),
         disallowedTools: splitToolRules(meta['disallowed-tools']),
+        lint: lintToolConsistency('skill', content),
         size: stat ? formatSize(stat.size) : '0 B',
         modified: stat ? stat.mtime.toISOString() : null,
       };
@@ -1687,7 +1779,12 @@ app.post('/api/ai/generate-skill', async (req, res) => {
       if (!validHook) return res.status(500).json({ error: 'Claude returned a description instead of hook code. Try again or switch to OpenRouter.' });
     }
 
-    res.json({ content, type });
+    // Enforcement layer: even when the user (or the model) forgot tool grants,
+    // derive them from the generated body and add them (Bash stays a suggestion).
+    let lint;
+    if (type !== 'hook') ({ content, lint } = enforceToolConsistency(type, content));
+
+    res.json({ content, type, lint });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -1870,7 +1967,9 @@ app.post('/api/ai/improve-skill', async (req, res) => {
     }
     improved = improved.replace(/^```[a-zA-Z]*\n?/, '').replace(/\n?```$/, '').trim();
     if (type !== 'hook') improved = unescapeClaudeMarkdown(improved);
-    res.json({ content: improved, type });
+    let lint;
+    if (type !== 'hook') ({ content: improved, lint } = enforceToolConsistency(type, improved));
+    res.json({ content: improved, type, lint });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -1884,7 +1983,7 @@ app.get('/api/commands', (req, res) => {
     .map(f => {
       const content = readFileSync(join(commandsDir, f), 'utf8');
       const stat = statSync(join(commandsDir, f));
-      return { name: f.replace(/\.md$/, ''), content, size: formatSize(stat.size), modified: stat.mtime.toISOString() };
+      return { name: f.replace(/\.md$/, ''), content, lint: lintToolConsistency('command', content), size: formatSize(stat.size), modified: stat.mtime.toISOString() };
     });
   res.json(commands);
 });
@@ -2785,6 +2884,7 @@ app.get('/api/agents', (req, res) => {
           description: (meta.description || '').slice(0, 120),
           model: meta.model || '',
           tools: normalizeTools(meta.tools),
+          lint: lintToolConsistency('agent', content),
           size: formatSize(stat.size),
           modified: stat.mtime.toISOString(),
         });
@@ -3340,6 +3440,25 @@ app.get('/api/hook-events', (req, res) => {
   res.json({ builtin: BUILTIN_HOOK_EVENTS, dynamic, all: [...BUILTIN_HOOK_EVENTS, ...dynamic] });
 });
 
+// Settings keys the suggest-settings catalog already teaches — doc discovery
+// reports anything beyond these as new (same pattern as hook events).
+const KNOWN_SETTINGS_KEYS = [
+  'model', 'permissions', 'env', 'hooks', 'includeCoAuthoredBy', 'cleanupPeriodDays',
+  'statusLine', 'outputStyle', 'alwaysThinkingEnabled', 'enabledPlugins', 'skillOverrides',
+  'disableBundledSkills', 'disableSkillShellExecution', 'sandbox', 'skillListingBudgetFraction',
+  'defaultMode', 'additionalDirectories', 'disableBypassPermissionsMode', 'allow', 'deny', 'ask',
+];
+
+// Keys appear in the docs as the backticked first column of settings tables.
+function extractSettingsKeys(text) {
+  const out = new Set();
+  for (const m of text.matchAll(/\|\s*`([a-zA-Z][\w.]{1,40})`\s*\|/g)) {
+    const key = m[1].split('.')[0];
+    if (/^[a-z]/.test(key)) out.add(key); // real keys are camelCase; skips tool names
+  }
+  return [...out];
+}
+
 app.get('/api/updates/check', async (req, res) => {
   const result = {
     appVersion: readJson(join(__dirname, 'package.json'), {}).version || 'unknown',
@@ -3379,10 +3498,39 @@ app.get('/api/updates/check', async (req, res) => {
     result.hookEvents = { error: 'Could not fetch the hooks documentation page — check your connection.' };
   }
 
+  // 3) Settings keys: discover the catalog from the settings docs
+  const settingsUrl = process.env.UPDATES_SETTINGS_URL || 'https://code.claude.com/docs/en/settings.md';
+  const settingsPage = await fetchTextUrl(settingsUrl);
+  if (settingsPage) {
+    const cfg0 = loadConfig();
+    const knownKeys = new Set([...KNOWN_SETTINGS_KEYS, ...(cfg0.dynamicSettingsKeys || [])]);
+    const foundKeys = extractSettingsKeys(settingsPage);
+    result.settingsKeys = {
+      knownCount: knownKeys.size,
+      foundCount: foundKeys.length,
+      newKeys: foundKeys.filter(k => !knownKeys.has(k)).sort(),
+      source: settingsUrl,
+    };
+  } else {
+    result.settingsKeys = { error: 'Could not fetch the settings documentation page.' };
+  }
+
   const cfg = loadConfig();
   cfg.lastUpdateCheck = result.checkedAt;
   saveConfig(cfg);
   res.json(result);
+});
+
+app.post('/api/updates/settings-keys/apply', (req, res) => {
+  const { keys } = req.body;
+  if (!Array.isArray(keys) || !keys.length || keys.some(k => typeof k !== 'string' || !/^[a-z][A-Za-z.]{1,40}$/.test(k))) {
+    return res.status(400).json({ error: 'keys must be an array of setting key names' });
+  }
+  const cfg = loadConfig();
+  cfg.dynamicSettingsKeys = [...new Set([...(cfg.dynamicSettingsKeys || []), ...keys])]
+    .filter(k => !KNOWN_SETTINGS_KEYS.includes(k));
+  saveConfig(cfg);
+  res.json({ ok: true, dynamic: cfg.dynamicSettingsKeys });
 });
 
 app.post('/api/updates/hook-events/apply', (req, res) => {
@@ -3632,7 +3780,7 @@ const PROMPT_DEFS = {
   'hook-generate-node':    { label: 'Hook generation — Node.js',       usedBy: 'Generate with AI → Hook (.mjs/.js); Add-Hook ✨', def: () => HOOK_SYSTEM_PROMPT,           note: 'Keep it ending with "Request: ".', tokens: ['{{EVENTS}}'] },
   'hook-generate-python':  { label: 'Hook generation — Python',        usedBy: 'Generate with AI → Hook (.py)',                  def: () => HOOK_SYSTEM_PROMPT_PYTHON,    note: 'Keep it ending with "Request: ".', tokens: ['{{EVENTS}}'] },
   'hook-generate-bash':    { label: 'Hook generation — Bash',          usedBy: 'Generate with AI → Hook (.sh)',                  def: () => HOOK_SYSTEM_PROMPT_BASH,      note: 'Keep it ending with "Request: ".', tokens: ['{{EVENTS}}'] },
-  'skill-creator-builtin': { label: 'Built-in skill-creator methodology', usedBy: 'Generate → skill-creator method (when none installed)', def: () => OFFICIAL_SKILL_CREATOR_CONTENT, note: 'Keep it ending with "Request: ".' },
+  'skill-creator-builtin': { label: 'Built-in skill-creator methodology', usedBy: 'Generate → skill-creator method (when none installed)', def: () => OFFICIAL_SKILL_CREATOR_CONTENT, note: 'Keep it ending with "Request: ". 2025 snapshot of the official methodology + app addendum — Anthropic\'s current skill-creator plugin adds eval loops; install it for the full experience.' },
   'improve':               { label: 'Improve with AI',                 usedBy: '✨ Improve on skills/agents/hooks',              def: () => IMPROVE_PROMPT_TEMPLATE,      tokens: ['{{TYPE}}', '{{TYPE_UPPER}}', '{{FEEDBACK}}', '{{VALIDATION}}'] },
   'explain':               { label: 'Explain with AI',                 usedBy: '🤖 Explain everywhere',                          def: () => EXPLAIN_SYSTEM_PROMPT },
   'workflow-plan':         { label: 'Workflow planning',               usedBy: 'Workflows → ✨ Create with AI (plan step)',      def: () => WORKFLOW_PLAN_PROMPT },
@@ -3646,8 +3794,18 @@ function getPrompt(id) {
   return (typeof overrides[id] === 'string' && overrides[id].trim()) ? overrides[id] : PROMPT_DEFS[id].def();
 }
 
+// Cheap stable hash (djb2) — used to detect that a built-in default improved
+// AFTER the user customized a prompt (their override silently shadows it).
+function promptHash(s) {
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) >>> 0;
+  return h.toString(36);
+}
+
 app.get('/api/prompts', (req, res) => {
-  const overrides = loadConfig().promptOverrides || {};
+  const cfg = loadConfig();
+  const overrides = cfg.promptOverrides || {};
+  const hashes = cfg.promptDefaultHashes || {};
   res.json(Object.entries(PROMPT_DEFS).map(([id, d]) => ({
     id,
     label: d.label,
@@ -3655,6 +3813,11 @@ app.get('/api/prompts', (req, res) => {
     note: d.note || '',
     tokens: d.tokens || [],
     isCustomized: !!(overrides[id] && overrides[id].trim()),
+    // true = default changed since customization; null = customized before we
+    // started recording hashes (unknown); false = in sync or not customized
+    defaultChanged: (overrides[id] && overrides[id].trim())
+      ? (hashes[id] ? promptHash(d.def()) !== hashes[id] : null)
+      : false,
     default: d.def(),
     current: getPrompt(id),
   })));
@@ -3670,6 +3833,9 @@ app.put('/api/prompts/:id', (req, res) => {
   const cfg = loadConfig();
   cfg.promptOverrides = cfg.promptOverrides || {};
   cfg.promptOverrides[req.params.id] = content;
+  // Snapshot the default's hash so we can tell the user when it later improves
+  cfg.promptDefaultHashes = cfg.promptDefaultHashes || {};
+  cfg.promptDefaultHashes[req.params.id] = promptHash(def.def());
   saveConfig(cfg);
   res.json({ ok: true, isCustomized: true });
 });
@@ -3678,6 +3844,7 @@ app.delete('/api/prompts/:id', (req, res) => {
   if (!PROMPT_DEFS[req.params.id]) return res.status(404).json({ error: 'Unknown prompt id' });
   const cfg = loadConfig();
   if (cfg.promptOverrides) delete cfg.promptOverrides[req.params.id];
+  if (cfg.promptDefaultHashes) delete cfg.promptDefaultHashes[req.params.id];
   saveConfig(cfg);
   res.json({ ok: true, isCustomized: false });
 });

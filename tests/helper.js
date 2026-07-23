@@ -40,6 +40,9 @@ if [ "$1" = "-p" ]; then
     *"workflow architect"*)
       printf '{"name":"test-workflow","title":"Test Workflow","description":"d","setupGuide":["a"],"components":[{"type":"skill","name":"comp-one","description":"d"},{"type":"hook","name":"guard-hook","description":"guards","event":"PreToolUse","matcher":"Bash"}]}'
       ;;
+    *"LINT_TEST"*)
+      printf -- '---\\nname: lint-skill\\ndescription: lint probe skill\\nallowed-tools: Read\\n---\\n\\n# Lint Probe\\n\\n1. Edit the config file with Edit.\\n2. Call mcp__probe__do to sync state.\\n3. Run the tests:\\n\\n\`\`\`bash\\npytest\\n\`\`\`\\n'
+      ;;
     *"ESCAPED_TEST"*)
       printf -- '\\\\---\\nname: repo-understand\\ndescription: >\\n&#x20; Deep-dives a repository.\\nwhen\\\\_to\\\\_use: >\\n&#x20; Use when asked to explain a repo.\\n\\\\---\\n\\n\\\\# Repo Understand\\n\\n\\\\## Steps\\n\\n\\\\- Call \\\\*\\\\*mcp\\\\_\\\\_codebase\\\\*\\\\* tools.'
       ;;

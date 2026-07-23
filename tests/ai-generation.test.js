@@ -409,6 +409,31 @@ test('compose inventory: hooks carry description + wiredTo; settings catalog cur
     'settings catalog includes current documented keys');
 });
 
+test('ENFORCEMENT: generation auto-grants tools the body uses; Bash stays a suggestion', async () => {
+  const { status, data } = await s.api('POST', '/ai/generate-skill', { prompt: 'LINT_TEST make it', provider: 'claude-cli', type: 'skill' });
+  assert.equal(status, 200, JSON.stringify(data));
+  assert.ok(data.lint, 'lint result returned');
+  assert.ok(data.lint.autoAdded.includes('Edit'), 'Edit auto-granted: ' + JSON.stringify(data.lint));
+  assert.ok(data.lint.autoAdded.includes('mcp__probe__do'), 'MCP tool auto-granted');
+  const grantLine = data.content.match(/allowed-tools:([^\n]*)/)[1];
+  assert.ok(grantLine.includes('Edit') && grantLine.includes('mcp__probe__do'), 'frontmatter actually updated: ' + grantLine);
+  assert.ok(!/\bBash\b/.test(grantLine), 'no silent blanket Bash grant');
+  assert.ok(data.lint.suggestions.some(x => /Bash\(/.test(x)), 'Bash offered as an explicit suggestion instead');
+});
+
+test('ENFORCEMENT: lint surfaces on the skills list (existing artifacts get flagged)', async () => {
+  await s.api('POST', '/skills', { name: 'lint-existing', content: '---\nname: lint-existing\ndescription: d\nallowed-tools: Read Grep\n---\n\n# X\n\n1. Edit the file with Edit.\n2. Use mcp__codebase-memory-mcp__search_code to find callers.\n' });
+  const { data } = await s.api('GET', '/skills');
+  const it = data.find(x => x.name === 'lint-existing');
+  assert.ok(it.lint, 'lint attached to list items');
+  assert.ok(it.lint.missing.includes('Edit'), 'ungranted Edit flagged: ' + JSON.stringify(it.lint));
+  assert.ok(it.lint.missing.some(m => m.startsWith('mcp__codebase-memory-mcp')), 'ungranted MCP tool flagged — the implement-plan defect is now visible');
+  // clean skill stays clean
+  await s.api('POST', '/skills', { name: 'lint-clean', content: '---\nname: lint-clean\ndescription: d\nallowed-tools: Edit\n---\n\n# Y\n\n1. Edit the file with Edit.\n' });
+  const clean = (await s.api('GET', '/skills')).data.find(x => x.name === 'lint-clean');
+  assert.deepEqual(clean.lint.missing, [], 'no false positives on a consistent skill');
+});
+
 test('CLI generation is pinned to Opus (authoring quality over latency)', async () => {
   await s.api('POST', '/ai/generate-skill', { prompt: 'model pin probe', provider: 'claude-cli', type: 'skill' });
   assert.ok(s.readShimArgs().includes('--model opus'), 'generate uses opus: ' + s.readShimArgs());

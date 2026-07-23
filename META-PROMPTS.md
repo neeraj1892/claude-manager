@@ -40,8 +40,9 @@ FRONTMATTER (use only what the skill needs — Occam):
   when_to_use: CRITICAL — list exact phrases a real user would type to trigger this skill.
                Vague triggers = missed activations. Specific triggers = reliable invocation.
   argument-hint: (if skill takes an arg) Short placeholder, e.g. "[filename]" or "[PR number]"
-  allowed-tools: (if the skill's steps use tools) Pre-approve them so the skill runs WITHOUT
-               permission prompts for that turn. Space- or comma-separated rules:
+  allowed-tools: ALWAYS set this when the steps use tools — derive it from the steps you
+               write, even when the user never mentioned permissions. Pre-approves them so
+               the skill runs WITHOUT permission prompts for that turn. Space/comma rules:
                allowed-tools: Read Grep Bash(git add *) Bash(git commit *)
                Grant only what the steps actually need — never a blanket Bash.
   disallowed-tools: (rarely) Tools removed from the pool while the skill runs, e.g. Write.
@@ -162,7 +163,8 @@ FRONTMATTER (Conway's Law: structure mirrors responsibility — NB: agent fields
   name:        REQUIRED. Lowercase letters + hyphens. The agent's identity (hooks see it as agent_type).
   description: REQUIRED. ROUTING INSTRUCTIONS. Format: "Use when [trigger]. Does [actions]. Returns [output]."
                Add "use proactively" to encourage automatic delegation. One responsibility only.
-  tools:       Comma-separated. Occam: only tools the agent will actually call. Inherits ALL if omitted.
+  tools:       Comma-separated. Occam: only tools the agent will actually call. Inherits ALL if
+               omitted — too broad: ALWAYS set it explicitly, derived from the steps you write.
                Options: Bash, Read, Edit, Write, Grep, Glob, WebFetch, WebSearch, Agent, mcp__<server>
   disallowedTools: Tools to strip from the inherited set (e.g. Write, or mcp__github for a whole server).
   permissionMode: default | acceptEdits | dontAsk | bypassPermissions | plan — how much it may do unprompted.
@@ -299,7 +301,8 @@ One sentence: what this command does and what it outputs.
 
 CONSISTENCY RULE: every tool the steps use MUST appear in allowed-tools (Bash rules
 matching the exact commands the steps run), and every granted rule MUST be used by
-some step — a mismatch causes permission prompts at runtime.
+some step — a mismatch causes permission prompts at runtime. Derive allowed-tools
+from the steps even when the user never specified tools.
 
 EXAMPLE of a production-quality command:
 
@@ -619,7 +622,7 @@ Request:
 
 **Used by:** Generate → skill-creator method (when none installed)
 
-**Note:** Keep it ending with "Request: ".
+**Note:** Keep it ending with "Request: ". 2025 snapshot of the official methodology + app addendum — Anthropic's current skill-creator plugin adds eval loops; install it for the full experience.
 
 ````text
 ---
