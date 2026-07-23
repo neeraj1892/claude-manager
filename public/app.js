@@ -3191,9 +3191,9 @@ function renderItemGrid(gridId, items, type, icon, onEdit, onDelete, useDisplayN
           ${(type === 'skill' || type === 'agent' || type === 'command') && !item.external ? `<button class="btn btn-run btn-sm" data-run="${escHtml(item.name)}" title="Run one-shot, streaming JSONL output to a file">▶ Run</button>` : ''}
           <button class="btn btn-secondary btn-sm" data-edit="${escHtml(item.name)}"${item.external ? ` data-edit-path="${escHtml(item.path)}"` : ''} title="Edit">✎ Edit</button>
           <button class="icon-act" data-copy="${escHtml(item.name)}"${item.external ? ` data-copy-path="${escHtml(item.path)}"` : ''} title="Copy the exact file content to the clipboard">⧉</button>
-          ${item.lint?.missing?.length && !item.external ? `<button class="icon-act" data-resolve="${escHtml(item.name)}" style="color:var(--warning)" title="Fix incomplete tool grants
-Why this shows: the body uses ${escHtml(item.lint.missing.join(', '))} but allowed-tools never grants ${item.lint.missing.length > 1 ? 'them' : 'it'} — so this ${escHtml(type)} stops for permission prompts at runtime (one-shot runs rely on the grant).
-Click to fix: the missing grant${item.lint.missing.length > 1 ? 's are' : ' is'} added to the frontmatter automatically. Bash is never auto-granted — add an exact Bash(<command> *) rule via ✎ Edit.">🔧</button>` : ''}
+          ${(item.lint?.missing?.length || item.lint?.suggestions?.length) && !item.external ? `<button class="icon-act" data-resolve="${escHtml(item.name)}" style="color:var(--warning)" title="Fix incomplete tool grants
+Why this shows: the body uses ${escHtml((item.lint.missing || []).join(', ') || 'shell commands')} that allowed-tools never grants — so this ${escHtml(type)} stops for permission prompts at runtime (one-shot runs rely on the grant).
+Click to fix: missing grants are added to the frontmatter automatically. Bash gets exact Bash(<command> *) rules derived from the body's own commands — never a blanket grant. Commands the fixer doesn't recognize must be granted via ✎ Edit.">🔧</button>` : ''}
           <details class="more-menu">
             <summary title="More actions">⋯</summary>
             <div class="more-menu-list">

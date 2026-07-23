@@ -241,7 +241,7 @@ test('🔧 resolve-grants button: visible on flagged cards, explains itself, cal
   assert.match(fix.title, /Why this shows/, 'tooltip explains why it appears');
   assert.match(fix.title, /permission prompts/, 'tooltip explains the consequence');
   assert.match(fix.title, /Click to fix/, 'tooltip explains what clicking does');
-  assert.match(fix.title, /Bash is never auto-granted/, 'tooltip explains the Bash exception');
+  assert.match(fix.title, /never a blanket grant/, 'tooltip explains the Bash policy (exact rules, no blanket)');
   fix.onclick();
   await new Promise(r => setTimeout(r, 30));
   const req = sent.filter(s2 => s2.path.includes('/lint/resolve')).pop();

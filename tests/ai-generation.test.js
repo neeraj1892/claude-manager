@@ -419,8 +419,20 @@ test('ENFORCEMENT: generation auto-grants tools the body uses; Bash stays a sugg
   assert.ok(data.lint.autoAdded.includes('mcp__probe__do'), 'MCP tool auto-granted');
   const grantLine = data.content.match(/allowed-tools:([^\n]*)/)[1];
   assert.ok(grantLine.includes('Edit') && grantLine.includes('mcp__probe__do'), 'frontmatter actually updated: ' + grantLine);
-  assert.ok(!/\bBash\b/.test(grantLine), 'no silent blanket Bash grant');
-  assert.ok(data.lint.suggestions.some(x => /Bash\(/.test(x)), 'Bash offered as an explicit suggestion instead');
+  assert.ok(grantLine.includes('Bash(pytest *)'), 'Bash granted as an exact rule derived from the body command: ' + grantLine);
+  assert.ok(!/(^|\s)Bash(\s|$)/.test(grantLine), 'never a blanket Bash grant');
+  // REGRESSION: the old blind trailing-fence strip amputated the closing fence
+  // of artifacts that legitimately END with a code block
+  assert.ok(data.content.trimEnd().endsWith('```'), 'closing fence of the body code block survives: …' + JSON.stringify(data.content.slice(-20)));
+});
+
+test('ENFORCEMENT: unrecognizable shell commands stay a suggestion, never auto-granted', async () => {
+  await s.api('POST', '/skills', { name: 'weird-cmd', content: '---\nname: weird-cmd\ndescription: d\n---\n\n# W\n\n1. Run the tool:\n\n```bash\nfrobnicate --all\n```\n' });
+  const it = (await s.api('GET', '/skills')).data.find(x => x.name === 'weird-cmd');
+  assert.ok(it.lint.suggestions.some(x => /not?e? .*recognizable|none of its commands/.test(x) || x.includes('recognizable')), 'suggestion kept: ' + JSON.stringify(it.lint));
+  assert.ok(!it.lint.missing.some(m => m.includes('frobnicate')), 'unknown command not granted');
+  const r = await s.api('POST', '/lint/resolve', { type: 'skill', name: 'weird-cmd' });
+  assert.equal(r.data.changed, false, 'nothing auto-fixable — user must add the rule via Edit');
 });
 
 test('ENFORCEMENT: lint surfaces on the skills list (existing artifacts get flagged)', async () => {

@@ -813,6 +813,17 @@ function normalizeTools(tools) {
 // `claude -p` sometimes returns markdown ESCAPED chat-style: \--- \# \_ \*\*
 // plus &#x20; entities for indentation. Saved verbatim, the file is unreadable
 // for both the user and Claude Code. Detect the signature and unescape.
+
+// Strip a WRAPPER code fence only — i.e. when the whole response was wrapped
+// in ```...```. A blind trailing-fence strip amputates the closing fence of
+// artifacts that legitimately END with a code block (real bug: it broke both
+// the saved file and Bash-rule extraction).
+function stripWrapperFence(text) {
+  const t = String(text).trim();
+  if (!t.startsWith('```')) return t;
+  return t.replace(/^```[a-zA-Z]*\n?/, '').replace(/\n?```$/, '').trim();
+}
+
 function unescapeClaudeMarkdown(content) {
   const looksEscaped = /(^|\n)\\---/.test(content) || content.includes('&#x20;') || /(^|\n)\\#/.test(content);
   if (!looksEscaped) return content;
@@ -1135,7 +1146,7 @@ app.post('/api/ai/suggest-settings', async (req, res) => {
       if (!claudeCliAvailable) return res.status(400).json({ error: 'Claude CLI not found. Use OpenRouter instead.' });
       raw = await callClaudeCli(fullPrompt);
     }
-    const json = raw.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim();
+    const json = stripWrapperFence(raw);
     const suggestion = JSON.parse(json);
     if (!suggestion.patch || typeof suggestion.patch !== 'object' || Array.isArray(suggestion.patch)) {
       return res.status(500).json({ error: 'AI returned an invalid patch — try rephrasing the request.' });
@@ -1268,17 +1279,44 @@ function lintToolConsistency(type, content) {
       if (LINT_READONLY_TOOLS.includes(b)) continue; // harmless extra grants
       if (!used.some(u => u === b || (b.startsWith('mcp__') && u.startsWith(b)))) out.unused.push(b);
     }
-    if (out.missing.includes('Bash')) {
-      // A silent blanket Bash grant is a security decision the user should make.
+    if (out.missing.includes('Bash') && type !== 'agent') {
+      // Never a blanket Bash grant. Derive exact-prefix rules from the body's
+      // own commands; only when none are recognizable does it stay a suggestion.
       out.missing = out.missing.filter(m => m !== 'Bash');
-      out.suggestions.push('Body runs shell commands but grants no Bash rule — add Bash(<command> *) rules matching the exact commands the steps run.');
+      const granted = rules.map(String);
+      const bashRules = extractBashCommands(body).filter(r => !granted.includes(r));
+      if (bashRules.length) out.missing.push(...bashRules);
+      else out.suggestions.push('Body runs shell commands but grants no Bash rule, and none of its commands are recognizable — add Bash(<command> *) rules via ✎ Edit, matching the exact commands the steps run.');
     }
   } catch {}
   return out;
 }
 
+// Known CLI commands we trust enough to derive narrow Bash(<cmd> *) rules from
+// the body. Unknown commands are never auto-granted — they stay a suggestion.
+const COMMON_CLI_COMMANDS = new Set([
+  'git', 'gh', 'npm', 'npx', 'node', 'yarn', 'pnpm', 'python', 'python3', 'pytest', 'pip', 'pip3',
+  'go', 'cargo', 'rustc', 'make', 'cmake', 'docker', 'kubectl', 'helm', 'terraform',
+  'mvn', 'gradle', 'ruby', 'bundle', 'rails', 'php', 'composer', 'dotnet', 'swift',
+  'tsc', 'eslint', 'prettier', 'jest', 'vitest', 'mocha', 'curl', 'jq', 'sed', 'awk', 'rg',
+]);
+
+// Extract the commands the body actually runs (fenced shell blocks + inline
+// `cmd args` spans) and turn them into exact-prefix Bash rules.
+function extractBashCommands(body) {
+  const cmds = new Set();
+  const consider = (line) => {
+    const m = String(line).trim().match(/^(?:\$\s+)?([a-z][a-z0-9_.-]*)\b/);
+    if (m && COMMON_CLI_COMMANDS.has(m[1])) cmds.add(m[1]);
+  };
+  for (const block of body.matchAll(/```(?:bash|sh|shell|console)?\n([\s\S]*?)```/g)) block[1].split('\n').forEach(consider);
+  for (const m of body.matchAll(/`([^`\n]+)`/g)) consider(m[1]);
+  return [...cmds].slice(0, 8).map(c => `Bash(${c} *)`);
+}
+
 // Auto-grant: after generation/improve, if the body uses tools the frontmatter
-// never granted, add them (non-Bash only; single-line field values only).
+// never granted, add them (single-line field values only). Bash is granted only
+// as exact-prefix rules derived from the body's own commands — never blanket.
 function enforceToolConsistency(type, content) {
   const before = lintToolConsistency(type, content);
   const autoAdded = [];
@@ -1889,7 +1927,7 @@ app.post('/api/ai/generate-skill', async (req, res) => {
       content = await callClaudeCli(fullPrompt);
     }
     const _sig = { fence: /^```/.test(content), escape: false, slice: false };
-    content = content.replace(/^```[a-zA-Z]*\n?/, '').replace(/\n?```$/, '').trim();
+    content = stripWrapperFence(content);
 
     // Markdown types: undo chat-style escaping (\--- &#x20; …) BEFORE the fence
     // checks — otherwise the recovery regex slices at the closing fence and
@@ -2169,7 +2207,7 @@ app.post('/api/ai/eval-artifact', async (req, res) => {
       + '\nLINT (deterministic ground truth): ' + JSON.stringify(lint)
       + '\n\nORIGINAL REQUEST:\n' + String(request).slice(0, 4000)
       + '\n\nARTIFACT TO EVALUATE:\n' + current;
-    const raw = (await callModel(prompt)).replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim();
+    const raw = stripWrapperFence(await callModel(prompt));
     const r = JSON.parse(raw);
     return {
       score: Math.max(0, Math.min(10, Number(r.score) || 0)),
@@ -2189,7 +2227,7 @@ app.post('/api/ai/eval-artifact', async (req, res) => {
       // ONE bounded revision, driven by the evaluator's own fix instructions
       const feedback = round.issues.map(x => `[${x.severity}] ${x.issue} — fix: ${x.fix}`).join('\n') || 'Fix the lint findings.';
       let improved = await callModel(IMPROVE_PROMPT(type, feedback, current) + current);
-      improved = improved.replace(/^```[a-zA-Z]*\n?/, '').replace(/\n?```$/, '').trim();
+      improved = stripWrapperFence(improved);
       if (type !== 'hook' && improved) {
         improved = unescapeClaudeMarkdown(improved);
         ({ content: improved } = enforceToolConsistency(type, improved));
@@ -2230,7 +2268,7 @@ app.post('/api/ai/improve-skill', async (req, res) => {
       improved = await callClaudeCli(fullPrompt);
     }
     const hadFence = /^```/.test(improved);
-    improved = improved.replace(/^```[a-zA-Z]*\n?/, '').replace(/\n?```$/, '').trim();
+    improved = stripWrapperFence(improved);
     let hadEscape = false;
     if (type !== 'hook') { const b = improved; improved = unescapeClaudeMarkdown(improved); hadEscape = b !== improved; }
     let lint;
@@ -2349,7 +2387,7 @@ app.post('/api/ai/generate-workflow-plan', async (req, res) => {
       if (!claudeCliAvailable) return res.status(400).json({ error: 'Claude CLI not found. Use OpenRouter instead.' });
       raw = await callClaudeCli(fullPrompt);
     }
-    const json = raw.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim();
+    const json = stripWrapperFence(raw);
     const plan = JSON.parse(json);
     if (!Array.isArray(plan.components) || !plan.components.length) {
       return res.status(500).json({ error: 'AI returned an invalid plan — try rephrasing your goal.' });
@@ -2502,7 +2540,7 @@ app.post('/api/ai/compose-workflow', async (req, res) => {
       if (!claudeCliAvailable) return res.status(400).json({ error: 'Claude CLI not found. Use OpenRouter instead.' });
       raw = await callClaudeCli(fullPrompt);
     }
-    const json = raw.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim();
+    const json = stripWrapperFence(raw);
     const plan = JSON.parse(json);
 
     // Validate: every referenced component must actually be installed;
@@ -3831,7 +3869,7 @@ app.post('/api/ai/create-custom-event', async (req, res) => {
       if (!claudeCliAvailable) return res.status(400).json({ error: 'Claude CLI not found. Use OpenRouter instead.' });
       raw = await callClaudeCli(fullPrompt);
     }
-    const def = JSON.parse(raw.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim());
+    const def = JSON.parse(stripWrapperFence(raw));
     if (!/^[A-Z][A-Za-z0-9]{2,39}$/.test(def.name || '')) return res.status(500).json({ error: 'AI returned an invalid event name — try again.' });
     if (!BUILTIN_HOOK_EVENTS.includes(def.underlyingEvent)) return res.status(500).json({ error: `AI chose an unknown underlying event ("${def.underlyingEvent}") — try rephrasing.` });
     if (!def.hookScript?.trim().startsWith('#')) return res.status(500).json({ error: 'AI returned an invalid hook script — try again.' });
