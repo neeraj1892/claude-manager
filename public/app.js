@@ -5506,6 +5506,8 @@ async function showSkillGenerator(initialType, prefillPrompt) {
   const sgStack = document.getElementById('sgTechStack');  if (sgStack) sgStack.value = '';
   const sgDom  = document.getElementById('sgDomain');      if (sgDom)   sgDom.value   = '';
   const sgPersp = document.getElementById('sgPerspective'); if (sgPersp) sgPersp.value = '';
+  const sgEvalCb = document.getElementById('sgEval'); if (sgEvalCb) sgEvalCb.checked = false; // permission is per-generation
+  const sgEvalRep = document.getElementById('sgEvalReport'); if (sgEvalRep) sgEvalRep.style.display = 'none';
   const sgTls  = document.getElementById('sgTools');       if (sgTls)   sgTls.value   = '';
   skillGenMethod = 'meta';
   setSkillGenMethod('meta');
@@ -5611,6 +5613,34 @@ function closeSkillGen() {
   if (skillGenEditor) { skillGenEditor.dispose(); skillGenEditor = null; }
 }
 
+// Opt-in bounded self-eval: 1 evaluator pass (inversion checklist + lint ground
+// truth); on "revise", ONE auto-revision + ONE re-check. Server hard-caps at 3
+// model calls — this can never loop.
+async function runSelfEval(request, content, cliModel) {
+  const wrap = document.getElementById('skillGenEditorWrap');
+  let rep = document.getElementById('sgEvalReport');
+  if (!rep && wrap) {
+    wrap.insertAdjacentHTML('beforebegin', '<div id="sgEvalReport" style="margin-bottom:8px;font-size:12px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--surface)"></div>');
+    rep = document.getElementById('sgEvalReport');
+  }
+  if (!rep) return;
+  rep.style.display = '';
+  rep.innerHTML = '🧪 Evaluating… (1 check, at most 1 auto-revision — hard-capped)';
+  try {
+    const r = await api('POST', '/ai/eval-artifact', { type: skillGenType, request, content, provider: skillGenProvider, cliModel });
+    const evals = (r.rounds || []).filter(x => x.score !== undefined);
+    const last = evals[evals.length - 1] || { score: '?', verdict: 'revise', issues: [] };
+    if (r.changed && skillGenEditor) skillGenEditor.setValue(r.content);
+    const issues = (last.issues || []).map(i => `<li><strong>[${escHtml(i.severity || 'note')}]</strong> ${escHtml(i.issue || '')}${i.fix ? ' — <em>' + escHtml(i.fix) + '</em>' : ''}</li>`).join('');
+    rep.innerHTML = `${last.verdict === 'pass' ? '✅' : '⚠️'} Eval: <strong>${escHtml(String(last.score))}/10</strong>`
+      + (evals.length > 1 ? ` <span style="color:var(--text-dim)">(first pass ${escHtml(String(evals[0].score))}/10 → auto-revised once → re-checked)</span>` : '')
+      + (r.capped ? ' <span style="color:var(--warning)">— revision cap reached; remaining issues need your judgment:</span>' : '')
+      + (issues && last.verdict !== 'pass' ? `<ul style="margin:4px 0 0 16px">${issues}</ul>` : '');
+  } catch (e) {
+    rep.innerHTML = '⚠️ Eval failed: ' + escHtml(e.message) + ' — the generated content above is untouched.';
+  }
+}
+
 async function runSkillGeneration() {
   const basePrompt = document.getElementById('skillGenPrompt').value.trim();
   if (!basePrompt) { toast('Describe what the skill should do', 'error'); document.getElementById('skillGenPrompt').focus(); return; }
@@ -5664,7 +5694,9 @@ async function runSkillGeneration() {
       if (found) creatorContent = found.content;
     }
     const hookLang = skillGenType === 'hook' ? skillGenHookExt : undefined;
-    const { content, lint } = await api('POST', '/ai/generate-skill', { prompt, provider: skillGenProvider, type: skillGenType, creatorContent, hookLang });
+    const genModel = document.getElementById('sgModel')?.value || 'opus';
+    const wantEval = !!document.getElementById('sgEval')?.checked;
+    const { content, lint } = await api('POST', '/ai/generate-skill', { prompt, provider: skillGenProvider, type: skillGenType, creatorContent, hookLang, cliModel: genModel });
     if (lint?.autoAdded?.length) toast(`🔓 Added missing tool grant${lint.autoAdded.length > 1 ? 's' : ''}: ${lint.autoAdded.join(', ')}`, 'info');
     if (lint?.suggestions?.length) toast('⚠ ' + lint.suggestions[0], 'error');
 
@@ -5679,6 +5711,9 @@ async function runSkillGeneration() {
     }
     const editorLang = skillGenType === 'hook' ? (HOOK_LANG_META[skillGenHookExt]?.monacoLang || 'javascript') : meta.monacoLang;
     skillGenEditor = createEditor('skillGenEditorWrap', editorLang, content);
+    const evalRep = document.getElementById('sgEvalReport');
+    if (evalRep) evalRep.style.display = 'none';
+    if (wantEval) runSelfEval(prompt, content, genModel); // fire async — review stays usable
     // Focus + select the name so user immediately sees it's editable
     nameField.focus();
     nameField.select();

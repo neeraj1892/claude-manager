@@ -96,8 +96,13 @@ test('validation: unknown id -> 404, empty content -> 400', async () => {
 });
 
 test('overrides for improve + explain flow through their endpoints', async () => {
-  await s.api('PUT', '/prompts/improve', {
+  // Must carry ALL tokens incl. the new {{PRINCIPLES}} — validation enforces it
+  const rejected = await s.api('PUT', '/prompts/improve', {
     content: 'MY_IMPROVE {{TYPE}} {{TYPE_UPPER}}\n{{FEEDBACK}}{{VALIDATION}}\nORIGINAL:\n',
+  });
+  assert.equal(rejected.status, 400, 'override missing {{PRINCIPLES}} is rejected');
+  await s.api('PUT', '/prompts/improve', {
+    content: 'MY_IMPROVE {{TYPE}} {{TYPE_UPPER}}\n{{PRINCIPLES}}\n{{FEEDBACK}}{{VALIDATION}}\nORIGINAL:\n',
   });
   await s.api('POST', '/ai/improve-skill', { content: 'body', provider: 'claude-cli', type: 'skill' });
   let sent = s.readShimPrompt();

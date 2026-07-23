@@ -127,9 +127,17 @@ CONTEXT DISCIPLINE (when the request carries tech stack / domain / MCP context):
   is inherently specific to it. Reference MCP tools conditionally with a built-in
   fallback: "If mcp__<server> is available use it; otherwise use Grep/Glob."
 
+BEFORE WRITING — decide internally, do not output this reasoning:
+  1. Is this ONE responsibility? If not, build the most central one and note the split in the description.
+  2. Which size tier: standard steps, or a larger autonomous skill (see BODY STRUCTURE)?
+  3. Which frontmatter fields does THIS skill actually need?
+  4. Which tools will the steps use? That exact list becomes allowed-tools.
+  5. What are the 2-3 most likely failure modes? Handle them inside the steps.
+  6. What does success output look like? Show it.
+
 BODY STRUCTURE (Pareto: when_to_use + numbered steps deliver 80% of value):
   - First line: one sentence stating what this skill does and its output.
-  - Steps: 3-7 numbered items (Miller's Law). Each step is complete and actionable.
+  - Steps: as many as the task truly needs — typically 3-7. Each step is atomic, actionable, and verifiable.
   - Show the exact output format with a realistic example (Humphrey: seeing = understanding).
   - Any step that runs a command states what to do if it fails (Gilbert: own the outcome —
     "if gh is missing, use the git CLI equivalent", not silent failure).
@@ -243,10 +251,15 @@ CONTEXT DISCIPLINE: request context (stack, domain, MCPs) describes the ENVIRONM
 Hardcode it only when the agent's purpose demands it; reference MCP tools
 conditionally with a built-in fallback (Grep/Glob/Bash).
 
+BEFORE WRITING — decide internally, do not output this reasoning:
+  1. Is this ONE responsibility? 2. What does the agent receive and return (its contract)?
+  3. Which tools will the steps call? That exact list becomes "tools" (+ mcpServers).
+  4. What are the likely failure modes? 5. What must this agent explicitly NOT do?
+
 BODY STRUCTURE (Pareto: description + first two steps = 80% of agent value):
   - Identity line: "You are a [role] agent. Your single responsibility is [X]."
   - Input section: what the agent receives (args, context, piped data).
-  - Steps: 3-7 numbered steps (Miller). Each is concrete and testable.
+  - Steps: as many as the task truly needs — typically 3-7. Each is concrete and testable.
   - Output contract: exact format returned to the orchestrator.
   - Constraints: what this agent does NOT do (prevents scope creep).
 
@@ -412,6 +425,10 @@ rl.on('close', () => {
   }
 });
 
+BEFORE WRITING — decide internally, do not output this reasoning:
+1. Which event truly matches the request? 2. What EXACT condition to detect — and everything to ignore?
+3. Block, inject feedback, or side effect only? 4. Which stdin fields might be missing? Guard them.
+
 Now produce the hook .mjs file content for the following request.
 
 OUTPUT CONTRACT — your response is saved to disk verbatim, so:
@@ -571,8 +588,8 @@ One sentence: what this command does and what it outputs.
 
 ## Steps
 
-1. 3-7 numbered, concrete steps (Miller's Law). Reference $ARGUMENTS where the
-   user's input is needed.
+1. As many numbered, concrete steps as the task needs (typically 3-7). Reference
+   $ARGUMENTS where the user's input is needed.
 2. Each step is complete and actionable.
 3. Show the exact output format with a short realistic example.
 
@@ -669,20 +686,22 @@ function callOpenRouter(apiKey, model, systemPrompt, userPrompt) {
 }
 
 // --- Claude CLI helper (stdin pipe to avoid ARG_MAX limits) ---
-// All AI generation runs on Opus for maximum prompt/output quality — this is
-// authoring-time work where quality beats latency. One-shot RUNS still use the
-// user's default model unless pinned in the Run modal.
+// Default authoring model: Opus (quality over latency) — but the user decides:
+// the Generate modal passes cliModel to override per generation. One-shot RUNS
+// still use the user's default model unless pinned in the Run modal.
 const CLI_GEN_MODEL = 'opus';
+const CLI_MODEL_RE = /^[a-zA-Z0-9.:_-]{1,40}$/;
 
-function callClaudeCli(fullPrompt) {
+function callClaudeCli(fullPrompt, model = CLI_GEN_MODEL) {
   return new Promise((resolve, reject) => {
     // Unique per process + call: Date.now() alone collides when two
     // generations run in the same millisecond, corrupting both prompts.
     const tmpFile = join(tmpdir(), `claude-prompt-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}.txt`);
     try { writeFileSync(tmpFile, fullPrompt, 'utf8'); } catch (e) { return reject(new Error('Failed to write temp file: ' + e.message)); }
+    const safeModel = CLI_MODEL_RE.test(String(model)) ? model : CLI_GEN_MODEL;
     const cmd = process.platform === 'win32'
-      ? `type "${tmpFile.replace(/"/g, '\\"')}" | claude -p --model ${CLI_GEN_MODEL} --dangerously-skip-permissions --allowedTools ""`
-      : `cat "${tmpFile.replace(/"/g, '\\"')}" | claude -p --model ${CLI_GEN_MODEL} --dangerously-skip-permissions --allowedTools ""`;
+      ? `type "${tmpFile.replace(/"/g, '\\"')}" | claude -p --model ${safeModel} --dangerously-skip-permissions --allowedTools ""`
+      : `cat "${tmpFile.replace(/"/g, '\\"')}" | claude -p --model ${safeModel} --dangerously-skip-permissions --allowedTools ""`;
     exec(cmd, { shell: true, timeout: 120000, maxBuffer: 10 * 1024 * 1024 }, (err, stdout, stderr) => {
       try { unlinkSync(tmpFile); } catch {}
       if (err) return reject(new Error(stderr?.trim() || err.message));
@@ -1716,8 +1735,9 @@ app.put('/api/ai-config', (req, res) => {
 });
 
 app.post('/api/ai/generate-skill', async (req, res) => {
-  const { prompt, provider, type = 'skill', creatorContent, hookLang } = req.body;
+  const { prompt, provider, type = 'skill', creatorContent, hookLang, cliModel } = req.body;
   if (!prompt?.trim()) return res.status(400).json({ error: 'prompt is required' });
+  if (cliModel && !CLI_MODEL_RE.test(cliModel)) return res.status(400).json({ error: 'Invalid model name' });
   let fullPrompt;
   if (creatorContent?.trim()) {
     // If the content already ends with "Request:" (official skill-creator format), append directly.
@@ -1739,6 +1759,9 @@ app.post('/api/ai/generate-skill', async (req, res) => {
       const cfg = loadConfig();
       if (!cfg.openRouterKey) return res.status(400).json({ error: 'OpenRouter API key not configured. Add it in Settings > AI Generation.' });
       content = await callOpenRouter(cfg.openRouterKey, cfg.openRouterModel || 'anthropic/claude-sonnet-4-5', '', fullPrompt);
+    } else if (cliModel) {
+      if (!claudeCliAvailable) return res.status(400).json({ error: 'Claude CLI not found. Use OpenRouter instead.' });
+      content = await callClaudeCli(fullPrompt, cliModel);
     } else {
       if (!claudeCliAvailable) return res.status(400).json({ error: 'Claude CLI not found. Install Claude Code or use OpenRouter instead.' });
       content = await callClaudeCli(fullPrompt);
@@ -1908,11 +1931,7 @@ Request: `;
 const IMPROVE_PROMPT_TEMPLATE = `You are an expert Claude Code {{TYPE}} author improving an existing {{TYPE}}.
 
 Principles to apply:
-- Pareto: clear trigger phrases + concrete numbered steps = 80% of value. Maximise these.
-- Occam: cut anything the user won't miss (vague intros, redundant steps, filler sentences).
-- Miller: cap at 7 steps. Merge overlapping ones; split only if a step is secretly two actions.
-- Kidlin: if a step can't be written simply, rewrite it until it can.
-- Humphrey: show a realistic output example so the user sees exactly what they'll get.
+{{PRINCIPLES}}
 
 Method (Kidlin: name the problem before solving it):
 1. Internally identify the 2-3 weakest points of the original (vague triggers?
@@ -1925,6 +1944,21 @@ Method (Kidlin: name the problem before solving it):
 
 ORIGINAL {{TYPE_UPPER}} TO IMPROVE:
 `;
+
+// Type-aware principles: "trigger phrases" and "output examples" are meaningless
+// for a hook; hook laws are meaningless for a skill.
+const IMPROVE_PRINCIPLES = {
+  hook: `- Fail-open: ALL logic inside try/catch, exit 0 in the catch — a crashing hook must never block Claude.
+- Stop guard: stop_hook_active checked before any work.
+- Murphy: guard every stdin field access; side effects get their own try/catch; never log secrets.
+- Precision: exit 0 immediately on non-match; detect exactly one condition.
+- Kidlin: the filename and top comment state exactly what it prevents/produces.`,
+  default: `- Pareto: clear trigger phrases + concrete numbered steps = 80% of value. Maximise these.
+- Occam: cut anything the user won't miss (vague intros, redundant steps, filler sentences).
+- Steps stay atomic and verifiable; merge overlapping ones; split only if a step is secretly two actions.
+- Kidlin: if a step can't be written simply, rewrite it until it can.
+- Humphrey: show a realistic output example so the user sees exactly what they'll get.`,
+};
 
 const IMPROVE_PROMPT = (type, feedback, original = '') => {
   // Type-aware defaults: "sharpen trigger phrases" is meaningless for a hook.
@@ -1945,9 +1979,94 @@ const IMPROVE_PROMPT = (type, feedback, original = '') => {
   return getPrompt('improve')
     .replaceAll('{{TYPE_UPPER}}', type.toUpperCase())
     .replaceAll('{{TYPE}}', type)
+    .replaceAll('{{PRINCIPLES}}', IMPROVE_PRINCIPLES[type] || IMPROVE_PRINCIPLES.default)
     .replaceAll('{{FEEDBACK}}', feedbackSection)
     .replaceAll('{{VALIDATION}}', validation);
 };
+
+// ── Bounded self-eval ──
+// Evaluator = the INVERSION checklist (what guarantees a bad artifact) + the
+// deterministic lint as ground truth. HARD CAP: MAX_EVAL_ROUNDS evaluations and
+// ONE revision — at most 3 model calls per request. It can never loop.
+const MAX_EVAL_ROUNDS = 2;
+
+const EVAL_ARTIFACT_PROMPT_TEMPLATE = `You are a strict Claude Code {{TYPE}} artifact evaluator. Judge the artifact below against its original request. Do not rewrite it — judge it.
+
+INVERSION CHECKLIST — the {{TYPE}} FAILS if any of these are true:
+- Environment context (tech stack, MCP names) hardcoded where the purpose doesn't demand it
+- Tools the body uses but never grants — see LINT below, it is deterministic ground truth — or grants nothing uses
+- Steps with no observable/verifiable result
+- Vague trigger phrases no real user would type (skills/agents/commands)
+- Escaped markdown (\\---, &#x20;) or code fences around the file
+- Invented Claude Code capabilities, frontmatter fields, or events
+- Scope beyond what the request asked for
+
+Score 0-10 (10 = ship as-is). verdict "pass" requires score >= 8 AND an empty LINT "missing" list.
+
+Output ONLY raw JSON — no prose, no fences:
+{"score": <0-10>, "verdict": "pass" | "revise", "issues": [{"severity": "high"|"medium"|"low", "issue": "what is wrong", "fix": "one concrete instruction that fixes it"}]}
+`;
+
+app.post('/api/ai/eval-artifact', async (req, res) => {
+  const { type = 'skill', request = '', content, provider, cliModel } = req.body;
+  if (!content?.trim()) return res.status(400).json({ error: 'content is required' });
+  if (cliModel && !CLI_MODEL_RE.test(cliModel)) return res.status(400).json({ error: 'Invalid model name' });
+
+  const callModel = async (prompt) => {
+    if (provider === 'openrouter') {
+      const cfg = loadConfig();
+      if (!cfg.openRouterKey) throw Object.assign(new Error('OpenRouter API key not configured.'), { status: 400 });
+      return callOpenRouter(cfg.openRouterKey, cfg.openRouterModel || 'anthropic/claude-sonnet-4-5', '', prompt);
+    }
+    if (!claudeCliAvailable) throw Object.assign(new Error('Claude CLI not found. Use OpenRouter instead.'), { status: 400 });
+    return callClaudeCli(prompt, cliModel || undefined);
+  };
+
+  const evalOnce = async (current) => {
+    const lint = type === 'hook' ? { missing: [], unused: [], suggestions: [] } : lintToolConsistency(type, current);
+    const prompt = getPrompt('eval-artifact').replaceAll('{{TYPE}}', type)
+      + '\nLINT (deterministic ground truth): ' + JSON.stringify(lint)
+      + '\n\nORIGINAL REQUEST:\n' + String(request).slice(0, 4000)
+      + '\n\nARTIFACT TO EVALUATE:\n' + current;
+    const raw = (await callModel(prompt)).replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim();
+    const r = JSON.parse(raw);
+    return {
+      score: Math.max(0, Math.min(10, Number(r.score) || 0)),
+      verdict: r.verdict === 'pass' ? 'pass' : 'revise',
+      issues: Array.isArray(r.issues) ? r.issues.slice(0, 10) : [],
+    };
+  };
+
+  try {
+    const rounds = [];
+    let current = content;
+    let changed = false;
+    for (let i = 0; i < MAX_EVAL_ROUNDS; i++) {
+      const round = await evalOnce(current);
+      rounds.push(round);
+      if (round.verdict === 'pass' || i === MAX_EVAL_ROUNDS - 1) break;
+      // ONE bounded revision, driven by the evaluator's own fix instructions
+      const feedback = round.issues.map(x => `[${x.severity}] ${x.issue} — fix: ${x.fix}`).join('\n') || 'Fix the lint findings.';
+      let improved = await callModel(IMPROVE_PROMPT(type, feedback, current) + current);
+      improved = improved.replace(/^```[a-zA-Z]*\n?/, '').replace(/\n?```$/, '').trim();
+      if (type !== 'hook' && improved) {
+        improved = unescapeClaudeMarkdown(improved);
+        ({ content: improved } = enforceToolConsistency(type, improved));
+      }
+      if (improved && improved !== current) { current = improved; changed = true; rounds.push({ revised: true }); }
+    }
+    const evals = rounds.filter(r => r.score !== undefined);
+    const final = evals[evals.length - 1];
+    res.json({
+      content: current, changed, rounds,
+      score: final.score, verdict: final.verdict,
+      capped: evals.length >= MAX_EVAL_ROUNDS && final.verdict !== 'pass',
+    });
+  } catch (e) {
+    if (e instanceof SyntaxError) return res.status(500).json({ error: 'Evaluator returned invalid JSON. Try again.' });
+    res.status(e.status || 500).json({ error: e.message });
+  }
+});
 
 // (The /api/skills/creators route is registered above /api/skills/:name — see Skills section.)
 
@@ -3781,7 +3900,8 @@ const PROMPT_DEFS = {
   'hook-generate-python':  { label: 'Hook generation — Python',        usedBy: 'Generate with AI → Hook (.py)',                  def: () => HOOK_SYSTEM_PROMPT_PYTHON,    note: 'Keep it ending with "Request: ".', tokens: ['{{EVENTS}}'] },
   'hook-generate-bash':    { label: 'Hook generation — Bash',          usedBy: 'Generate with AI → Hook (.sh)',                  def: () => HOOK_SYSTEM_PROMPT_BASH,      note: 'Keep it ending with "Request: ".', tokens: ['{{EVENTS}}'] },
   'skill-creator-builtin': { label: 'Built-in skill-creator methodology', usedBy: 'Generate → skill-creator method (when none installed)', def: () => OFFICIAL_SKILL_CREATOR_CONTENT, note: 'Keep it ending with "Request: ". 2025 snapshot of the official methodology + app addendum — Anthropic\'s current skill-creator plugin adds eval loops; install it for the full experience.' },
-  'improve':               { label: 'Improve with AI',                 usedBy: '✨ Improve on skills/agents/hooks',              def: () => IMPROVE_PROMPT_TEMPLATE,      tokens: ['{{TYPE}}', '{{TYPE_UPPER}}', '{{FEEDBACK}}', '{{VALIDATION}}'] },
+  'improve':               { label: 'Improve with AI',                 usedBy: '✨ Improve on skills/agents/hooks',              def: () => IMPROVE_PROMPT_TEMPLATE,      tokens: ['{{TYPE}}', '{{TYPE_UPPER}}', '{{PRINCIPLES}}', '{{FEEDBACK}}', '{{VALIDATION}}'] },
+  'eval-artifact':         { label: 'Artifact evaluator (self-eval)',  usedBy: 'Generate with AI → 🧪 Evaluate after generating', def: () => EVAL_ARTIFACT_PROMPT_TEMPLATE, tokens: ['{{TYPE}}'], note: 'Bounded: 2 evaluations + 1 revision max per generation — it can never loop.' },
   'explain':               { label: 'Explain with AI',                 usedBy: '🤖 Explain everywhere',                          def: () => EXPLAIN_SYSTEM_PROMPT },
   'workflow-plan':         { label: 'Workflow planning',               usedBy: 'Workflows → ✨ Create with AI (plan step)',      def: () => WORKFLOW_PLAN_PROMPT },
   'compose-workflow':      { label: 'Compose from installed',          usedBy: 'Workflows → 🧬 Compose from Installed',          def: () => COMPOSE_PROMPT },

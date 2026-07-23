@@ -1499,6 +1499,21 @@
               <span class="matcher-chip" onclick="document.getElementById('sgTools').value='Read Write Edit'">File editing</span>
             </div>
           </div>
+          <div class="form-group" id="sgQualityWrap" style="margin-bottom:8px;display:flex;gap:14px;align-items:flex-end;flex-wrap:wrap">
+            <div style="min-width:180px">
+              <label class="form-label">Generation model</label>
+              <select id="sgModel" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:7px 10px;color:var(--text);font-size:13px;outline:none">
+                <option value="opus">opus — best quality (default)</option>
+                <option value="sonnet">sonnet — faster</option>
+                <option value="haiku">haiku — fastest, cheapest</option>
+              </select>
+            </div>
+            <label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-size:13px;user-select:none;padding-bottom:7px">
+              <input type="checkbox" id="sgEval" style="margin:0">
+              🧪 Evaluate after generating
+              <span style="font-weight:400;color:var(--text-dim);font-size:11px" title="An evaluator pass scores the result against an inversion checklist (hardcoded context? ungranted tools? unverifiable steps?) plus the tool lint. If it fails, ONE auto-revision + ONE re-check — hard cap of 3 model calls, never loops.">ⓘ 1 check + max 1 revision</span>
+            </label>
+          </div>
           <div class="form-group" style="margin-bottom:0">
             <label class="form-label">Perspective / role to assume <span style="font-weight:400;color:var(--text-dim)">(optional — one, multiple, or blank)</span></label>
             <input type="text" id="sgPerspective" placeholder="e.g. senior engineer, security researcher, DX engineer">

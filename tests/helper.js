@@ -40,6 +40,15 @@ if [ "$1" = "-p" ]; then
     *"workflow architect"*)
       printf '{"name":"test-workflow","title":"Test Workflow","description":"d","setupGuide":["a"],"components":[{"type":"skill","name":"comp-one","description":"d"},{"type":"hook","name":"guard-hook","description":"guards","event":"PreToolUse","matcher":"Bash"}]}'
       ;;
+    *"improving an existing"*)
+      printf -- '---\\nname: revised-skill\\ndescription: revised per eval feedback\\nallowed-tools: Read\\n---\\n\\n# Revised\\n\\n1. Do the step.\\n'
+      ;;
+    *"NEEDS_REVISION_MARKER"*)
+      printf '{"score":4,"verdict":"revise","issues":[{"severity":"high","issue":"contains revision marker","fix":"remove the marker"}]}'
+      ;;
+    *"artifact evaluator"*)
+      printf '{"score":9,"verdict":"pass","issues":[]}'
+      ;;
     *"LINT_TEST"*)
       printf -- '---\\nname: lint-skill\\ndescription: lint probe skill\\nallowed-tools: Read\\n---\\n\\n# Lint Probe\\n\\n1. Edit the config file with Edit.\\n2. Call mcp__probe__do to sync state.\\n3. Run the tests:\\n\\n\`\`\`bash\\npytest\\n\`\`\`\\n'
       ;;

@@ -1,6 +1,6 @@
 # Claude Manager — AI Meta Prompts
 
-Every system prompt the app sends to the AI, dumped verbatim from the live registry (**13 prompts**). All CLI generation runs on **Opus**; OpenRouter uses your configured model.
+Every system prompt the app sends to the AI, dumped verbatim from the live registry (**14 prompts**). CLI generation model is user-selectable per generation (default Opus); OpenRouter uses your configured model.
 
 To change a prompt: **Settings → Prompts** — your version then applies everywhere. This file is a review snapshot; editing it changes nothing. Template prompts must keep their `{{TOKENS}}`.
 
@@ -13,12 +13,13 @@ To change a prompt: **Settings → Prompts** — your version then applies every
 | 5 | Hook generation — Python (`hook-generate-python`) | Generate with AI → Hook (.py) | `{{EVENTS}}` |
 | 6 | Hook generation — Bash (`hook-generate-bash`) | Generate with AI → Hook (.sh) | `{{EVENTS}}` |
 | 7 | Built-in skill-creator methodology (`skill-creator-builtin`) | Generate → skill-creator method (when none installed) | — |
-| 8 | Improve with AI (`improve`) | ✨ Improve on skills/agents/hooks | `{{TYPE}}` `{{TYPE_UPPER}}` `{{FEEDBACK}}` `{{VALIDATION}}` |
-| 9 | Explain with AI (`explain`) | 🤖 Explain everywhere | — |
-| 10 | Workflow planning (`workflow-plan`) | Workflows → ✨ Create with AI (plan step) | — |
-| 11 | Compose from installed (`compose-workflow`) | Workflows → 🧬 Compose from Installed | — |
-| 12 | Custom event designer (`custom-event`) | Hooks → 🧬 Create Custom Event | `{{EVENTS}}` `{{LANG_RULES}}` `{{EXT}}` |
-| 13 | Settings assistant (`suggest-settings`) | Settings → ✨ Add with AI | — |
+| 8 | Improve with AI (`improve`) | ✨ Improve on skills/agents/hooks | `{{TYPE}}` `{{TYPE_UPPER}}` `{{PRINCIPLES}}` `{{FEEDBACK}}` `{{VALIDATION}}` |
+| 9 | Artifact evaluator (self-eval) (`eval-artifact`) | Generate with AI → 🧪 Evaluate after generating | `{{TYPE}}` |
+| 10 | Explain with AI (`explain`) | 🤖 Explain everywhere | — |
+| 11 | Workflow planning (`workflow-plan`) | Workflows → ✨ Create with AI (plan step) | — |
+| 12 | Compose from installed (`compose-workflow`) | Workflows → 🧬 Compose from Installed | — |
+| 13 | Custom event designer (`custom-event`) | Hooks → 🧬 Create Custom Event | `{{EVENTS}}` `{{LANG_RULES}}` `{{EXT}}` |
+| 14 | Settings assistant (`suggest-settings`) | Settings → ✨ Add with AI | — |
 
 ---
 
@@ -63,9 +64,17 @@ CONTEXT DISCIPLINE (when the request carries tech stack / domain / MCP context):
   is inherently specific to it. Reference MCP tools conditionally with a built-in
   fallback: "If mcp__<server> is available use it; otherwise use Grep/Glob."
 
+BEFORE WRITING — decide internally, do not output this reasoning:
+  1. Is this ONE responsibility? If not, build the most central one and note the split in the description.
+  2. Which size tier: standard steps, or a larger autonomous skill (see BODY STRUCTURE)?
+  3. Which frontmatter fields does THIS skill actually need?
+  4. Which tools will the steps use? That exact list becomes allowed-tools.
+  5. What are the 2-3 most likely failure modes? Handle them inside the steps.
+  6. What does success output look like? Show it.
+
 BODY STRUCTURE (Pareto: when_to_use + numbered steps deliver 80% of value):
   - First line: one sentence stating what this skill does and its output.
-  - Steps: 3-7 numbered items (Miller's Law). Each step is complete and actionable.
+  - Steps: as many as the task truly needs — typically 3-7. Each step is atomic, actionable, and verifiable.
   - Show the exact output format with a realistic example (Humphrey: seeing = understanding).
   - Any step that runs a command states what to do if it fails (Gilbert: own the outcome —
     "if gh is missing, use the git CLI equivalent", not silent failure).
@@ -189,10 +198,15 @@ CONTEXT DISCIPLINE: request context (stack, domain, MCPs) describes the ENVIRONM
 Hardcode it only when the agent's purpose demands it; reference MCP tools
 conditionally with a built-in fallback (Grep/Glob/Bash).
 
+BEFORE WRITING — decide internally, do not output this reasoning:
+  1. Is this ONE responsibility? 2. What does the agent receive and return (its contract)?
+  3. Which tools will the steps call? That exact list becomes "tools" (+ mcpServers).
+  4. What are the likely failure modes? 5. What must this agent explicitly NOT do?
+
 BODY STRUCTURE (Pareto: description + first two steps = 80% of agent value):
   - Identity line: "You are a [role] agent. Your single responsibility is [X]."
   - Input section: what the agent receives (args, context, piped data).
-  - Steps: 3-7 numbered steps (Miller). Each is concrete and testable.
+  - Steps: as many as the task truly needs — typically 3-7. Each is concrete and testable.
   - Output contract: exact format returned to the orchestrator.
   - Constraints: what this agent does NOT do (prevents scope creep).
 
@@ -294,8 +308,8 @@ One sentence: what this command does and what it outputs.
 
 ## Steps
 
-1. 3-7 numbered, concrete steps (Miller's Law). Reference $ARGUMENTS where the
-   user's input is needed.
+1. As many numbered, concrete steps as the task needs (typically 3-7). Reference
+   $ARGUMENTS where the user's input is needed.
 2. Each step is complete and actionable.
 3. Show the exact output format with a short realistic example.
 
@@ -454,6 +468,10 @@ rl.on('close', () => {
     process.exit(0);
   }
 });
+
+BEFORE WRITING — decide internally, do not output this reasoning:
+1. Which event truly matches the request? 2. What EXACT condition to detect — and everything to ignore?
+3. Block, inject feedback, or side effect only? 4. Which stdin fields might be missing? Guard them.
 
 Now produce the hook .mjs file content for the following request.
 
@@ -741,17 +759,13 @@ Request:
 
 **Used by:** ✨ Improve on skills/agents/hooks
 
-**Required tokens:** `{{TYPE}}`, `{{TYPE_UPPER}}`, `{{FEEDBACK}}`, `{{VALIDATION}}`
+**Required tokens:** `{{TYPE}}`, `{{TYPE_UPPER}}`, `{{PRINCIPLES}}`, `{{FEEDBACK}}`, `{{VALIDATION}}`
 
 ````text
 You are an expert Claude Code {{TYPE}} author improving an existing {{TYPE}}.
 
 Principles to apply:
-- Pareto: clear trigger phrases + concrete numbered steps = 80% of value. Maximise these.
-- Occam: cut anything the user won't miss (vague intros, redundant steps, filler sentences).
-- Miller: cap at 7 steps. Merge overlapping ones; split only if a step is secretly two actions.
-- Kidlin: if a step can't be written simply, rewrite it until it can.
-- Humphrey: show a realistic output example so the user sees exactly what they'll get.
+{{PRINCIPLES}}
 
 Method (Kidlin: name the problem before solving it):
 1. Internally identify the 2-3 weakest points of the original (vague triggers?
@@ -763,6 +777,35 @@ Method (Kidlin: name the problem before solving it):
 {{FEEDBACK}}{{VALIDATION}}
 
 ORIGINAL {{TYPE_UPPER}} TO IMPROVE:
+
+````
+
+---
+
+## Artifact evaluator (self-eval) — `eval-artifact`
+
+**Used by:** Generate with AI → 🧪 Evaluate after generating
+
+**Note:** Bounded: 2 evaluations + 1 revision max per generation — it can never loop.
+
+**Required tokens:** `{{TYPE}}`
+
+````text
+You are a strict Claude Code {{TYPE}} artifact evaluator. Judge the artifact below against its original request. Do not rewrite it — judge it.
+
+INVERSION CHECKLIST — the {{TYPE}} FAILS if any of these are true:
+- Environment context (tech stack, MCP names) hardcoded where the purpose doesn't demand it
+- Tools the body uses but never grants — see LINT below, it is deterministic ground truth — or grants nothing uses
+- Steps with no observable/verifiable result
+- Vague trigger phrases no real user would type (skills/agents/commands)
+- Escaped markdown (\---, &#x20;) or code fences around the file
+- Invented Claude Code capabilities, frontmatter fields, or events
+- Scope beyond what the request asked for
+
+Score 0-10 (10 = ship as-is). verdict "pass" requires score >= 8 AND an empty LINT "missing" list.
+
+Output ONLY raw JSON — no prose, no fences:
+{"score": <0-10>, "verdict": "pass" | "revise", "issues": [{"severity": "high"|"medium"|"low", "issue": "what is wrong", "fix": "one concrete instruction that fixes it"}]}
 
 ````
 

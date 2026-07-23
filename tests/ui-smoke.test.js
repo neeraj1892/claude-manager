@@ -231,6 +231,17 @@ test('REGRESSION: Improve on a card fetches the real file (lists are metadata-on
   w.document.getElementById('improveClose').onclick();
 });
 
+test('generate modal exposes model choice + opt-in bounded eval', (t) => {
+  if (skipIfNoDom(t)) return;
+  const sel = w.document.getElementById('sgModel');
+  assert.ok(sel, 'model picker present');
+  assert.equal(sel.value, 'opus', 'defaults to opus');
+  assert.ok([...sel.options].some(o => o.value === 'sonnet'), 'user can pick another model');
+  const cb = w.document.getElementById('sgEval');
+  assert.ok(cb, 'eval opt-in present');
+  assert.ok(!cb.checked, 'eval is opt-in — permission asked upfront, unchecked by default');
+});
+
 test('cards offer ⧉ Copy content — copies the exact raw file to the clipboard', async (t) => {
   if (skipIfNoDom(t)) return;
   await w.eval('loadSkills()');

@@ -434,6 +434,49 @@ test('ENFORCEMENT: lint surfaces on the skills list (existing artifacts get flag
   assert.deepEqual(clean.lint.missing, [], 'no false positives on a consistent skill');
 });
 
+test('user-selected generation model reaches the CLI; invalid model rejected', async () => {
+  await s.api('POST', '/ai/generate-skill', { prompt: 'model pick probe', provider: 'claude-cli', type: 'skill', cliModel: 'sonnet' });
+  assert.ok(s.readShimArgs().includes('--model sonnet'), 'user choice used: ' + s.readShimArgs());
+  assert.equal((await s.api('POST', '/ai/generate-skill', { prompt: 'x', provider: 'claude-cli', type: 'skill', cliModel: 'bad model!' })).status, 400);
+});
+
+test('self-eval: pass path = exactly one bounded evaluation', async () => {
+  const { status, data } = await s.api('POST', '/ai/eval-artifact', { type: 'skill', request: 'r', content: '---\nname: ok\n---\n\n# OK\n\n1. Step.\n', provider: 'claude-cli' });
+  assert.equal(status, 200, JSON.stringify(data));
+  assert.equal(data.verdict, 'pass');
+  assert.equal(data.changed, false);
+  assert.equal(data.rounds.filter(r => r.score !== undefined).length, 1, 'a passing artifact costs one call');
+});
+
+test('self-eval: revise path = eval → ONE revision → re-eval, hard-capped, never loops', async () => {
+  const { status, data } = await s.api('POST', '/ai/eval-artifact', { type: 'skill', request: 'r', content: '---\nname: bad\n---\n\nNEEDS_REVISION_MARKER body\n', provider: 'claude-cli' });
+  assert.equal(status, 200, JSON.stringify(data));
+  const evals = data.rounds.filter(r => r.score !== undefined);
+  assert.equal(evals.length, 2, 'exactly two evaluations (MAX_EVAL_ROUNDS)');
+  assert.equal(data.rounds.filter(r => r.revised).length, 1, 'exactly one revision');
+  assert.equal(data.changed, true);
+  assert.ok(!data.content.includes('NEEDS_REVISION_MARKER'), 'revised content returned');
+  assert.equal(data.verdict, 'pass', 're-check passed after revision');
+  assert.equal((await s.api('POST', '/ai/eval-artifact', {})).status, 400, 'content required');
+});
+
+test('improve principles are type-aware via {{PRINCIPLES}}', async () => {
+  await s.api('POST', '/ai/improve-skill', { content: '#!/usr/bin/env node\nx', provider: 'claude-cli', type: 'hook' });
+  let p = s.readShimPrompt();
+  assert.ok(p.includes('Fail-open: ALL logic inside try/catch'), 'hook principles injected');
+  assert.ok(!p.includes('trigger phrases'), 'no skill-speak in hook improve');
+  await s.api('POST', '/ai/improve-skill', { content: '---\nname: x\n---\nb', provider: 'claude-cli', type: 'skill' });
+  p = s.readShimPrompt();
+  assert.ok(p.includes('trigger phrases'), 'skill principles injected');
+});
+
+test('generation prompts carry the internal planning phase', async () => {
+  await s.api('POST', '/ai/generate-skill', { prompt: 'p', provider: 'claude-cli', type: 'skill' });
+  assert.ok(s.readShimPrompt().includes('BEFORE WRITING — decide internally'), 'skill planning phase');
+  await s.api('POST', '/ai/generate-skill', { prompt: 'p', provider: 'claude-cli', type: 'hook', hookLang: '.mjs' });
+  assert.ok(s.readShimPrompt().includes('BEFORE WRITING'), 'hook planning phase');
+});
+
 test('CLI generation is pinned to Opus (authoring quality over latency)', async () => {
   await s.api('POST', '/ai/generate-skill', { prompt: 'model pin probe', provider: 'claude-cli', type: 'skill' });
   assert.ok(s.readShimArgs().includes('--model opus'), 'generate uses opus: ' + s.readShimArgs());
