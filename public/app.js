@@ -646,15 +646,23 @@ function setFolderBanner(valid, path) {
   }
 }
 
-// Which shell should generated commands target? Defaults to the server's OS,
-// user can flip it (persisted).
+// Which shell should generated commands target? The terminal the user pastes
+// into lives on the BROWSER's machine, not the server's — so default from the
+// client OS (user agent) first, server OS as fallback. User can flip (persisted).
 let _shellPref = localStorage.getItem('cm-shell') || null;
+
+function deriveShellDefault(ua, serverPlatform) {
+  if (/Windows/i.test(ua || '')) return 'powershell';
+  if (/Mac|Linux|X11|CrOS/i.test(ua || '')) return 'bash';
+  return serverPlatform === 'win32' ? 'powershell' : 'bash';
+}
+window.deriveShellDefault = deriveShellDefault;
 
 async function checkFolderValid() {
   try {
     const s = await api('GET', '/status');
     setFolderBanner(s.valid, s.path);
-    if (!_shellPref) _shellPref = s.platform === 'win32' ? 'powershell' : 'bash';
+    if (!_shellPref) _shellPref = deriveShellDefault(navigator.userAgent, s.platform);
     return s.valid;
   } catch { return false; }
 }
@@ -4926,14 +4934,20 @@ function buildBashCommand(promptLines, cwd, file, model) {
     if (/^~($|\/)/.test(s)) return s.replace(/([ '"$`\\])/g, '\\$1');
     return `'` + s.replace(/'/g, `'\\''`) + `'`;
   };
+  // Delimiter must not appear as a line of the prompt, or the heredoc ends early
+  let delim = 'PROMPT';
+  let n = 2;
+  while (promptLines.some(l => String(l).trim() === delim)) delim = 'PROMPT_END_' + n++;
+  // Create the output dir — a redirect into a missing folder fails
+  const dir = String(file).includes('/') ? String(file).replace(/\/[^/]*$/, '') : '';
   return [
-    `cd ${qp(cwd)} && claude -p \\`,
+    `cd ${qp(cwd)}${dir ? ` && mkdir -p ${qp(dir)}` : ''} && claude -p \\`,
     `  --dangerously-skip-permissions \\`,
     `  --output-format stream-json --verbose \\`,
     ...(model ? [`  --model ${model} \\`] : []),
-    `  > ${qp(file)} << 'PROMPT'`,
+    `  > ${qp(file)} << '${delim}'`,
     ...promptLines,
-    'PROMPT',
+    delim,
   ].join('\n');
 }
 
@@ -4946,8 +4960,14 @@ function buildPsCommand(promptLines, cwd, file, model) {
     ? `"$HOME${String(s).slice(1).replace(/"/g, '`"')}"`
     : qps(s);
   const bt = '`';
+  // A prompt line that is exactly '@ would terminate the here-string early —
+  // indent it by one space (whitespace-only change keeps the meaning)
+  promptLines = promptLines.map(l => String(l).trim() === `'@` ? ' ' + l : l);
+  // Create the output dir — Out-File into a missing folder fails
+  const dir = String(file).match(/^(.*)[\\/][^\\/]*$/)?.[1] || '';
   return [
     `cd ${qpsPath(cwd)}`,
+    ...(dir ? [`New-Item -ItemType Directory -Force -Path ${qpsPath(dir)} | Out-Null`] : []),
     `@'`,
     ...promptLines,
     `'@ | claude -p ${bt}`,

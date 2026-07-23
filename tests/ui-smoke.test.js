@@ -105,6 +105,33 @@ test('manual command respects the shell toggle (bash heredoc vs PowerShell here-
   w.eval("setShellPref('bash')");
 });
 
+test('shell default follows the CLIENT OS (terminal is on the browser machine)', (t) => {
+  if (skipIfNoDom(t)) return;
+  const d = w.deriveShellDefault;
+  assert.equal(d('Mozilla/5.0 (Windows NT 10.0; Win64; x64)', 'linux'), 'powershell',
+    'Windows browser + linux/mac server → PowerShell (the reported bug)');
+  assert.equal(d('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)', 'win32'), 'bash');
+  assert.equal(d('Mozilla/5.0 (X11; Linux x86_64)', 'win32'), 'bash');
+  assert.equal(d('', 'win32'), 'powershell', 'unknown UA falls back to server platform');
+  assert.equal(d('', 'darwin'), 'bash');
+});
+
+test('manual command: output dir created, heredoc delimiter collision-proof', (t) => {
+  if (skipIfNoDom(t)) return;
+  let cmd = w.eval(`buildBashCommand(['/plan x', 'body'], '~', '~/claude-runs/out.jsonl', '')`);
+  assert.ok(cmd.includes('mkdir -p ~/claude-runs'), 'bash creates the output dir');
+  assert.ok(cmd.includes("<< 'PROMPT'"), 'default delimiter when no collision');
+  cmd = w.eval(`buildBashCommand(['line one', 'PROMPT', 'line three'], '~', 'out.jsonl', '')`);
+  assert.ok(!cmd.includes("<< 'PROMPT'\n"), 'delimiter renamed when the prompt contains a PROMPT line');
+  const delim = cmd.match(/<< '([^']+)'/)[1];
+  assert.ok(delim.startsWith('PROMPT_END_'), 'collision-safe delimiter: ' + delim);
+  assert.ok(cmd.trimEnd().endsWith('\n' + delim), 'heredoc still closed with the same delimiter');
+  assert.ok(!cmd.includes('mkdir'), 'no mkdir for a bare filename');
+  const ps = w.eval(`buildPsCommand(["a", "'@", "b"], '~', '~/claude-runs/out.jsonl', '')`);
+  assert.ok(ps.includes('New-Item -ItemType Directory -Force'), 'PowerShell creates the output dir');
+  assert.ok(ps.includes("\n '@\n"), "literal '@ line indented so the here-string survives");
+});
+
 test('workflow templates: Run disabled + Install shown until components exist', async (t) => {
   if (skipIfNoDom(t)) return;
   await w.eval('loadWorkflows()');

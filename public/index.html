@@ -1332,6 +1332,10 @@
           <textarea id="runManualCmd" readonly rows="9" style="flex:1;font-family:monospace;font-size:11px;background:var(--surface2)"></textarea>
           <button class="btn btn-secondary btn-sm" id="runManualCopy" type="button">Copy</button>
         </div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:6px;line-height:1.5">
+          ⚠ Match the shell to the terminal you paste into — the bash version hangs PowerShell at a <code>&gt;&gt;</code>/quote prompt (no heredoc support), and vice versa.<br>
+          ⚠ First time using <code>--dangerously-skip-permissions</code>? Run <code>claude --dangerously-skip-permissions</code> once interactively and accept the warning — non-interactive <code>-p</code> runs can't show that prompt and will refuse. It's also refused in root/admin sessions.
+        </div>
       </details>
 
       <div class="folder-dialog-actions">
