@@ -648,8 +648,11 @@ function setFolderBanner(valid, path) {
 
 // Which shell should generated commands target? The terminal the user pastes
 // into lives on the BROWSER's machine, not the server's — so default from the
-// client OS (user agent) first, server OS as fallback. User can flip (persisted).
-let _shellPref = localStorage.getItem('cm-shell') || null;
+// client OS (user agent) first, server OS as fallback.
+// Only an EXPLICIT toggle click persists (key v2: the old 'cm-shell' key was
+// auto-written with the computed default on every modal open, so Windows users
+// carried a stale 'bash' forever — ignore it).
+let _shellPref = localStorage.getItem('cm-shell-v2') || null;
 
 function deriveShellDefault(ua, serverPlatform) {
   if (/Windows/i.test(ua || '')) return 'powershell';
@@ -667,11 +670,12 @@ async function checkFolderValid() {
   } catch { return false; }
 }
 
-function setShellPref(shell) {
+function setShellPref(shell, persist = false) {
   _shellPref = shell;
-  localStorage.setItem('cm-shell', shell);
+  if (persist) localStorage.setItem('cm-shell-v2', shell);
   document.querySelectorAll('[data-shell-pick]').forEach(b => b.classList.toggle('active', b.dataset.shellPick === shell));
 }
+window.setShellPref = setShellPref;
 document.getElementById('folderInput').addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('folderConfirm').click(); });
 document.getElementById('refreshBtn').onclick = () => { loadSection(currentSection); loadBadges(); toast('Refreshed', 'info'); };
 
@@ -4998,7 +5002,7 @@ document.getElementById('runExpected').addEventListener('input', refreshManualRu
 document.getElementById('runCwd').addEventListener('input', refreshManualRunCmd);
 document.getElementById('runCliModel').addEventListener('change', refreshManualRunCmd);
 document.querySelectorAll('[data-shell-pick]').forEach(b => {
-  b.onclick = () => { setShellPref(b.dataset.shellPick); refreshManualRunCmd(); };
+  b.onclick = () => { setShellPref(b.dataset.shellPick, true); refreshManualRunCmd(); };
 });
 document.getElementById('runOutputFile').addEventListener('input', refreshManualRunCmd);
 document.getElementById('runManualCopy').onclick = () => {
@@ -5019,7 +5023,7 @@ async function openRunModal(kind, name, defaultTask) {
   document.getElementById('runModalSetup').style.display = '';
   document.getElementById('runModalLive').style.display = 'none';
   document.getElementById('runInfoBox').style.display = 'none';
-  setShellPref(_shellPref || 'bash'); // sync the shell toggle chips
+  setShellPref(_shellPref || deriveShellDefault(navigator.userAgent, '')); // sync chips — never persists a computed default
   refreshManualRunCmd();
   document.getElementById('runModal').classList.add('open');
   setTimeout(() => document.getElementById('runTask').focus(), 60);

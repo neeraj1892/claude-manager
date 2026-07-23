@@ -105,6 +105,19 @@ test('manual command respects the shell toggle (bash heredoc vs PowerShell here-
   w.eval("setShellPref('bash')");
 });
 
+test('REGRESSION: computed shell default never persists; only explicit clicks do', async (t) => {
+  if (skipIfNoDom(t)) return;
+  w.localStorage.setItem('cm-shell', 'bash'); // stale legacy auto-written key (the reported bug)
+  w.eval("setShellPref('powershell')");       // computed/sync call — no persist arg
+  assert.equal(w.localStorage.getItem('cm-shell-v2'), null,
+    'auto-derived pref must not be written — stale values froze Windows users on bash');
+  const chip = w.document.querySelector('[data-shell-pick="powershell"]');
+  chip.onclick();                             // explicit user choice
+  assert.equal(w.localStorage.getItem('cm-shell-v2'), 'powershell', 'explicit click persists to the v2 key');
+  w.localStorage.removeItem('cm-shell-v2');
+  w.eval("setShellPref('bash')");
+});
+
 test('shell default follows the CLIENT OS (terminal is on the browser machine)', (t) => {
   if (skipIfNoDom(t)) return;
   const d = w.deriveShellDefault;
