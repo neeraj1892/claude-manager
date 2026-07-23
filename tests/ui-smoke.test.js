@@ -105,6 +105,20 @@ test('manual command respects the shell toggle (bash heredoc vs PowerShell here-
   w.eval("setShellPref('bash')");
 });
 
+test('portable command: one string valid in bash+zsh+PowerShell; honest refusal on apostrophes', (t) => {
+  if (skipIfNoDom(t)) return;
+  const cmd = w.eval(`buildPortableCommand(['/plan x', 'line two'], '~', '~/claude-runs/out.jsonl', 'sonnet')`);
+  assert.ok(cmd.startsWith('mkdir -p ~/claude-runs ; cd ~ ; claude -p '), 'mkdir/cd/claude chained with ; (works in all three shells)');
+  assert.ok(cmd.includes("'/plan x\nline two'"), 'prompt is a single-quoted literal (identical semantics in all three)');
+  assert.ok(cmd.includes('--model sonnet'), 'model pin carried');
+  assert.ok(!cmd.includes('<<') && !cmd.includes('\\\n') && !cmd.includes('`'), 'no heredoc, no bash/PS-only continuations');
+  const refused = w.eval(`buildPortableCommand(["the user's plan"], '~', 'x.jsonl', '')`);
+  assert.ok(refused.startsWith('#') && refused.includes('apostrophe'), 'apostrophe prompt refused with an explanation, not a broken command');
+  const spacey = w.eval(`buildPortableCommand(['x'], '~/My Folder', 'x.jsonl', '')`);
+  assert.ok(spacey.startsWith('#'), 'paths with spaces refused too');
+  assert.ok(w.document.querySelector('[data-shell-pick="portable"]'), 'Portable chip present in the modal');
+});
+
 test('REGRESSION: computed shell default never persists; only explicit clicks do', async (t) => {
   if (skipIfNoDom(t)) return;
   w.localStorage.setItem('cm-shell', 'bash'); // stale legacy auto-written key (the reported bug)

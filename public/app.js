@@ -4938,9 +4938,29 @@ function buildManualRunCmd() {
   }
   if (expected) promptLines.push('', 'EXPECTED OUTPUT — the run is complete only when this is delivered exactly:', expected);
 
-  return _shellPref === 'powershell'
-    ? buildPsCommand(promptLines, cwd, file, model)
+  return _shellPref === 'powershell' ? buildPsCommand(promptLines, cwd, file, model)
+    : _shellPref === 'portable'      ? buildPortableCommand(promptLines, cwd, file, model)
     : buildBashCommand(promptLines, cwd, file, model);
+}
+
+// ONE command that runs unchanged in bash, zsh, AND PowerShell (5.1+):
+// single-quoted strings are literal in all three, ';' separates commands
+// everywhere, and cd ~ / mkdir -p / > redirects exist in all. Not cmd.exe.
+// The single unportable character is the apostrophe (bash: '\'' vs PS: '') —
+// refuse honestly instead of emitting a command that breaks on one side.
+function buildPortableCommand(promptLines, cwd, file, model) {
+  const prompt = promptLines.join('\n');
+  const pathsOk = ![cwd, file].some(s => /['\s"]/.test(String(s)));
+  if (prompt.includes("'") || !pathsOk) {
+    return [
+      `# Portable mode unavailable: the ${prompt.includes("'") ? "prompt contains an apostrophe (')" : 'paths contain spaces or quotes'}`,
+      '# bash and PowerShell escape these differently — pick a specific shell above.',
+    ].join('\n');
+  }
+  const dir = String(file).includes('/') ? String(file).replace(/\/[^/]*$/, '') : '';
+  return [
+    `${dir ? `mkdir -p ${dir} ; ` : ''}cd ${cwd} ; claude -p '${prompt}' --dangerously-skip-permissions --output-format stream-json --verbose${model ? ` --model ${model}` : ''} > ${file}`,
+  ].join('\n');
 }
 
 // bash/zsh: heredoc prompt, backslash continuations, ~ kept expandable
