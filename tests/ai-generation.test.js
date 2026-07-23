@@ -472,6 +472,17 @@ test('improve principles are type-aware via {{PRINCIPLES}}', async () => {
   assert.ok(p.includes('trigger phrases'), 'skill principles injected');
 });
 
+test('JSON prompts carry the character-boundary + array-truncation guards (Gemini review)', async () => {
+  await s.api('POST', '/ai/eval-artifact', { type: 'skill', request: 'r', content: '---\nname: ok\n---\nbody', provider: 'claude-cli' });
+  assert.ok(s.readShimPrompt().includes("first character of your response must be '{'"), 'eval prompt boundary');
+  await s.api('POST', '/ai/generate-workflow-plan', { goal: 'g', provider: 'claude-cli' });
+  assert.ok(s.readShimPrompt().includes("first character of your response must be '{'"), 'plan prompt boundary');
+  await s.api('POST', '/ai/suggest-settings', { request: 'deny env reads', provider: 'claude-cli' });
+  const sp = s.readShimPrompt();
+  assert.ok(sp.includes("first character of"), 'settings prompt boundary');
+  assert.ok(sp.includes('NEVER truncate an array'), 'array truncation forbidden — protects existing permissions');
+});
+
 test('generation prompts carry the internal planning phase', async () => {
   await s.api('POST', '/ai/generate-skill', { prompt: 'p', provider: 'claude-cli', type: 'skill' });
   assert.ok(s.readShimPrompt().includes('BEFORE WRITING — decide internally'), 'skill planning phase');

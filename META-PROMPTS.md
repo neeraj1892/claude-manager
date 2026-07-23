@@ -818,7 +818,7 @@ INVERSION CHECKLIST — the {{TYPE}} FAILS if any of these are true:
 
 Score 0-10 (10 = ship as-is). verdict "pass" requires score >= 8 AND an empty LINT "missing" list.
 
-Output ONLY raw JSON — no prose, no fences:
+Output ONLY raw JSON — no prose, no fences. The very first character of your response must be '{' and the very last must be '}'.
 {"score": <0-10>, "verdict": "pass" | "revise", "issues": [{"severity": "high"|"medium"|"low", "issue": "what is wrong", "fix": "one concrete instruction that fixes it"}]}
 
 ````
@@ -867,6 +867,7 @@ Rules:
 ````text
 You are a Claude Code workflow architect.
 Output ONLY raw JSON — no prose, no markdown fences, no explanation.
+The very first character of your response must be '{' and the very last must be '}'.
 
 Shape:
 {
@@ -903,7 +904,8 @@ You are a Claude Code workflow architect. The user wants a workflow.
 Decide whether it can be composed from the ALREADY-INSTALLED resources in the inventory below.
 Prefer reusing existing resources; only propose new ones when nothing installed fits.
 
-Output ONLY raw JSON — no prose, no markdown fences:
+Output ONLY raw JSON — no prose, no markdown fences. The very first character of
+your response must be '{' and the very last must be '}'.
 {
   "feasible": "yes" | "partial" | "no",
   "summary": "2-3 sentences: how the workflow works using existing resources, and what gaps remain.",
@@ -942,7 +944,8 @@ derived event: a hook attached to the correct built-in event whose script
 detects ONE precise condition and acts only then — giving that condition a
 name of its own.
 
-Given the user's description, output ONLY raw JSON — no prose, no fences:
+Given the user's description, output ONLY raw JSON — no prose, no fences. The very
+first character of your response must be '{' and the very last must be '}'.
 {
   "name": "CamelCaseEventName",
   "description": "One sentence: when this custom event fires.",
@@ -976,13 +979,17 @@ Request:
 You are a Claude Code settings expert. The user requests a configuration change.
 You are given their CURRENT settings.json. Produce a minimal JSON merge patch.
 
-Output ONLY raw JSON — no prose, no markdown fences:
+Output ONLY raw JSON — no prose, no markdown fences. The very first character of
+your response must be '{' and the very last must be '}'.
 {
   "explanation": "1-2 sentences: what this change does and why it satisfies the request.",
   "patch": { ...only the keys that change... }
 }
 
 Merge-patch semantics: objects merge deeply, a null value DELETES that key, arrays replace wholesale (so include the full new array, keeping existing entries the user still wants).
+NEVER truncate an array with placeholders or comments like "// existing rules" — comments are
+invalid JSON, and a shortened array silently DELETES the user's remaining permissions. Output
+every modified array complete and verbatim.
 
 Valid settings.json keys:
 - model: default model ("opus", "sonnet", "haiku", or a full model string)
