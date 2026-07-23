@@ -1448,9 +1448,11 @@ function renderElsewhereHooks(items) {
           <div class="list-title mono" title="${escHtml(f.path)}">${escHtml(f.path)}</div>
           <div class="list-sub">${f.size} · ${fmtDate(f.modified)}</div>
         </div>
+        <button class="icon-act" data-ew-copy="${escHtml(f.path)}" title="Copy file content">⧉</button>
         <button class="icon-act accent" data-ew-explain="${escHtml(f.path)}" title="Explain with AI">🤖</button>
         <button class="icon-act" data-ew-edit="${escHtml(f.path)}" title="Edit">✎</button>
       </div>`).join('')}</div>`;
+  wrap.querySelectorAll('[data-ew-copy]').forEach(b => b.onclick = () => copyFileByPath(b.dataset.ewCopy));
   wrap.querySelectorAll('[data-ew-edit]').forEach(b => b.onclick = () => openFileEditor(b.dataset.ewEdit));
   wrap.querySelectorAll('[data-ew-explain]').forEach(b => b.onclick = () => explainFile(b.dataset.ewExplain));
 }
@@ -1479,6 +1481,15 @@ async function explainFile(relPath) {
 }
 window.explainFile = explainFile;
 
+async function copyFileByPath(relPath) {
+  try {
+    const { content } = await api('GET', '/files?path=' + encodeURIComponent(relPath));
+    await navigator.clipboard.writeText(content || '');
+    toast(relPath.split('/').pop() + ' copied — exact file content, paste anywhere');
+  } catch (e) { toast('Copy failed: ' + e.message, 'error'); }
+}
+window.copyFileByPath = copyFileByPath;
+
 // ===== FILE EXPLORER (deep-dive into a skill or any folder) =====
 async function openFileExplorer(relDir, title) {
   document.getElementById('feTitle').textContent = title || relDir;
@@ -1498,10 +1509,12 @@ async function openFileExplorer(relDir, title) {
           <div class="list-title mono" title="${escHtml(e.path)}">${escHtml(display)}</div>
           <div class="list-sub">${e.size} · ${fmtDate(e.modified)}</div>
         </div>
+        <button class="icon-act" data-fe-copy="${escHtml(e.path)}" title="Copy file content">⧉</button>
         <button class="icon-act accent" data-fe-explain="${escHtml(e.path)}" title="Explain with AI">🤖</button>
         <button class="icon-act" data-fe-edit="${escHtml(e.path)}" title="Edit">✎</button>
       </div>`;
     }).join('')}</div>`;
+    list.querySelectorAll('[data-fe-copy]').forEach(b => b.onclick = () => copyFileByPath(b.dataset.feCopy));
     list.querySelectorAll('[data-fe-edit]').forEach(b => b.onclick = () => openFileEditor(b.dataset.feEdit));
     list.querySelectorAll('[data-fe-explain]').forEach(b => b.onclick = () => explainFile(b.dataset.feExplain));
   } catch (e) {
@@ -1818,6 +1831,7 @@ function renderHookFiles(files, wiredMap = {}) {
         <div class="list-sub">${f.size} · ${fmtDate(f.modified)}</div>
       </div>
       ${!wired ? `<button class="icon-act accent" data-hf-wire="${escHtml(f.name)}" title="Wire to a lifecycle event — required before it can run">⚡</button>` : ''}
+      <button class="icon-act" data-hf-copy="${escHtml(f.name)}" title="Copy file content">⧉</button>
       <button class="icon-act accent" data-hf-explain="${escHtml(f.name)}" title="Explain with AI">🤖</button>
       <button class="icon-act" data-hf-edit="${escHtml(f.name)}" title="Edit">✎</button>
       <button class="icon-act danger" data-hf-del="${escHtml(f.name)}" title="Delete">🗑</button>
@@ -1833,6 +1847,14 @@ function renderHookFiles(files, wiredMap = {}) {
     b.onclick = () => {
       const file = files.find(f => f.name === b.dataset.hfExplain);
       if (file) showExplainer(file.name, file.content || '', 'hook', { ext: file.name.split('.').pop() });
+    };
+  });
+  el.querySelectorAll('[data-hf-copy]').forEach(b => {
+    b.onclick = async () => {
+      const file = files.find(f => f.name === b.dataset.hfCopy);
+      if (!file) return;
+      await navigator.clipboard.writeText(file.content || '');
+      toast(file.name + ' copied — exact file content, paste anywhere');
     };
   });
   el.querySelectorAll('[data-hf-edit]').forEach(b => { b.onclick = () => editHookFile(b.dataset.hfEdit); });
@@ -2843,12 +2865,17 @@ function buildWorkflowOneShotCommand(wf) {
 
 // End-to-end invocation instructions for a workflow, from its components
 function buildWorkflowUsageHtml(wf) {
-  const by = t => (wf.components || []).filter(c => c.type === t);
+  const comps = wf.components || [];
+  const wfKey = String(wf.name || wf.title || 'wf');
+  (window._wfUsageComps = window._wfUsageComps || {})[wfKey] = comps;
+  // Per-component copy: the workflow itself is a bundle, but each skill/agent/hook/command file can be copied individually.
+  const cp = c => `<button class="icon-act" data-copy-comp="${escHtml(wfKey)}::${comps.indexOf(c)}" title="Copy the ${escHtml(c.type)} file content" style="vertical-align:middle;margin-left:4px">⧉</button>`;
+  const by = t => comps.filter(c => c.type === t);
   const rows = [];
-  by('command').forEach(c => rows.push(`<li>Type <code>/${escHtml(c.name)}</code> in any Claude Code session to trigger it manually. ${escHtml(c.description || '')}</li>`));
-  by('skill').forEach(c => rows.push(`<li>Invoke the <strong>${escHtml(c.name)}</strong> skill with <code>/${escHtml(c.name)}</code>, or just ask for it naturally — Claude auto-triggers it when your request matches its description.</li>`));
-  by('agent').forEach(c => rows.push(`<li>The <strong>${escHtml(c.name)}</strong> agent is delegated to automatically when relevant, or say <em>"use the ${escHtml(c.name)} agent"</em>.</li>`));
-  by('hook').forEach(c => rows.push(`<li>The <strong>${escHtml(c.name)}</strong> hook fires automatically${c.event ? ` on <code>${escHtml(c.event)}</code>${c.matcher ? ` (matcher <code>${escHtml(c.matcher)}</code>)` : ''}` : ' — wire it to an event in the Hooks section'} in every session. No action needed.</li>`));
+  by('command').forEach(c => rows.push(`<li>Type <code>/${escHtml(c.name)}</code> in any Claude Code session to trigger it manually. ${escHtml(c.description || '')}${cp(c)}</li>`));
+  by('skill').forEach(c => rows.push(`<li>Invoke the <strong>${escHtml(c.name)}</strong> skill with <code>/${escHtml(c.name)}</code>, or just ask for it naturally — Claude auto-triggers it when your request matches its description.${cp(c)}</li>`));
+  by('agent').forEach(c => rows.push(`<li>The <strong>${escHtml(c.name)}</strong> agent is delegated to automatically when relevant, or say <em>"use the ${escHtml(c.name)} agent"</em>.${cp(c)}</li>`));
+  by('hook').forEach(c => rows.push(`<li>The <strong>${escHtml(c.name)}</strong> hook fires automatically${c.event ? ` on <code>${escHtml(c.event)}</code>${c.matcher ? ` (matcher <code>${escHtml(c.matcher)}</code>)` : ''}` : ' — wire it to an event in the Hooks section'} in every session. No action needed.${cp(c)}</li>`));
   const cmd = buildWorkflowOneShotCommand(wf);
   return `
     <div style="font-weight:700;margin:14px 0 8px">🚀 How to invoke this workflow end to end</div>
@@ -2869,6 +2896,19 @@ function buildWorkflowUsageHtml(wf) {
 function wireOneShotCopyButtons(container) {
   container.querySelectorAll('[data-copy-oneshot]').forEach(b => {
     b.onclick = () => navigator.clipboard.writeText(b.dataset.copyOneshot).then(() => toast('One-shot command copied'));
+  });
+  container.querySelectorAll('[data-copy-comp]').forEach(b => {
+    b.onclick = async () => {
+      const [wfKey, idx] = b.dataset.copyComp.split('::');
+      const c = (window._wfUsageComps?.[wfKey] || [])[+idx];
+      if (!c) return;
+      if (c.content) { // template components carry their content in memory
+        await navigator.clipboard.writeText(c.content);
+        toast(c.name + ' copied — exact file content, paste anywhere');
+      } else { // installed components: fetch the file from disk
+        copyItemContent(c.type, c.name);
+      }
+    };
   });
 }
 
@@ -2957,6 +2997,35 @@ async function runWfInstall() {
   document.getElementById('wfDoneBtn').style.display = '';
 }
 
+// ===== COPY RAW CONTENT (exact file bytes → clipboard) =====
+async function fetchItemContent(type, name, path) {
+  if (path) return (await api('GET', '/files?path=' + encodeURIComponent(path))).content; // external items
+  if (type === 'skill')   return (await api('GET', '/skills/' + encodeURIComponent(name))).content;
+  if (type === 'agent')   return (await api('GET', '/agents/' + encodeURIComponent(name))).content;
+  if (type === 'command') {
+    const cmds = await api('GET', '/commands');
+    return cmds.find(c => c.name === name)?.content ?? '';
+  }
+  if (type === 'hook') {
+    const data = await api('GET', '/hooks');
+    const f = data.files.find(x => x.name === name)
+           || data.files.find(x => x.name === name + '.mjs')
+           || data.files.find(x => x.name.replace(/\.[^.]+$/, '') === name);
+    return f?.content ?? '';
+  }
+  return '';
+}
+
+async function copyItemContent(type, name, path) {
+  try {
+    const content = await fetchItemContent(type, name, path);
+    if (!content) { toast('Nothing to copy — content not found', 'error'); return; }
+    await navigator.clipboard.writeText(content);
+    toast(`${name} copied — exact file content, paste anywhere`);
+  } catch (e) { toast('Copy failed: ' + e.message, 'error'); }
+}
+window.copyItemContent = copyItemContent;
+
 // ===== SHARED CARD GRID RENDERER =====
 function renderItemGrid(gridId, items, type, icon, onEdit, onDelete, useDisplayName = false, isFilterPass = false) {
   const grid = document.getElementById(gridId);
@@ -3035,6 +3104,7 @@ function renderItemGrid(gridId, items, type, icon, onEdit, onDelete, useDisplayN
           <details class="more-menu">
             <summary title="More actions">⋯</summary>
             <div class="more-menu-list">
+              <button class="btn btn-sm" data-copy="${escHtml(item.name)}"${item.external ? ` data-copy-path="${escHtml(item.path)}"` : ''}>⧉ Copy content</button>
               ${type === 'skill' ? `<button class="btn btn-sm" data-files="${escHtml(item.name)}">📂 Browse files</button>` : ''}
               <button class="btn btn-sm" data-explain="${escHtml(item.name)}">🤖 Explain with AI</button>
               ${type !== 'command' && !item.external ? `<button class="btn btn-sm" data-improve="${escHtml(item.name)}">✨ Improve with AI</button>` : ''}
@@ -3049,6 +3119,9 @@ function renderItemGrid(gridId, items, type, icon, onEdit, onDelete, useDisplayN
   });
   grid.querySelectorAll('[data-files]').forEach(b => {
     b.onclick = () => openFileExplorer('skills/' + b.dataset.files, '📂 ' + b.dataset.files + ' — skill files');
+  });
+  grid.querySelectorAll('[data-copy]').forEach(b => {
+    b.onclick = () => copyItemContent(type, b.dataset.copy, b.dataset.copyPath || undefined);
   });
   grid.querySelectorAll('[data-explain]').forEach(b => {
     b.onclick = () => {
@@ -6530,7 +6603,7 @@ async function loadWorkflows() {
       if (!w) return;
       const wfLike = {
         name: w.id, title: w.name, description: w.description,
-        components: w.components.map(c => ({ type: c.type, name: c.name.replace(/\.(mjs|js|py|sh)$/, ''), description: c.desc, event: c.event, matcher: c.matcher })),
+        components: w.components.map(c => ({ type: c.type, name: c.name.replace(/\.(mjs|js|py|sh)$/, ''), description: c.desc, event: c.event, matcher: c.matcher, content: c.content })),
       };
       document.getElementById('wfUsageTitle').textContent = '📖 ' + w.name + ' — how to use it';
       const body = document.getElementById('wfUsageBody');
@@ -6603,6 +6676,7 @@ function showWorkflowDetail(id) {
             </div>
           </div>
           <div class="wf-comp-actions">
+            <button class="btn btn-xs btn-ghost" onclick="wfCopyComp(${i},'${w.id}')" title="Copy the ${comp.type} file content">⧉ Copy</button>
             <button class="btn btn-xs btn-ghost" onclick="wfTogglePreview(${i})">Preview</button>
             <button class="btn btn-xs btn-secondary" id="wf-btn-${i}" onclick="wfInstallOne(${i},'${w.id}')">Create</button>
             ${comp.type === 'hook' ? `<button class="btn btn-xs btn-ghost" onclick="wfRegisterHook(${i},'${w.id}')">Register</button>` : ''}
@@ -6626,6 +6700,13 @@ function showWorkflowDetail(id) {
 
   document.getElementById('wf-install-all').onclick = () => wfInstallAll(w.id);
 }
+
+window.wfCopyComp = async function(i, workflowId) {
+  const comp = WORKFLOWS.find(x => x.id === workflowId)?.components[i];
+  if (!comp?.content) { toast('Nothing to copy', 'error'); return; }
+  await navigator.clipboard.writeText(comp.content);
+  toast(comp.name + ' copied — exact file content, paste anywhere');
+};
 
 window.wfTogglePreview = function(i) {
   const el = document.getElementById('wf-preview-' + i);

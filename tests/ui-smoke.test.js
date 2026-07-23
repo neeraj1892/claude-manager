@@ -20,7 +20,7 @@ before(async (t) => {
   w = dom.window;
   w.require = Object.assign(function () {}, { config() {} }); // Monaco AMD stub
   w.matchMedia = () => ({ matches: false, addListener() {}, addEventListener() {} });
-  w.navigator.clipboard = { writeText: async () => {} };
+  w.navigator.clipboard = { writeText: async (t) => { w._lastClip = t; } };
   sent = [];
   w.fetch = async (path, opts) => {
     sent.push({ path, method: opts?.method || 'GET', body: opts?.body ? JSON.parse(opts.body) : undefined });
@@ -35,6 +35,7 @@ before(async (t) => {
       if (path.includes('/overview')) return { skills: 1, agents: 2, hookEvents: 3, plugins: 4, enabledPlugins: 2, mcpServers: 5, commands: 6, hookFiles: 0, model: 'default', path: '/x' };
       if (path.includes('/hooks')) return { files: [], elsewhere: [], settings: {} };
       if (path.includes('/workflows')) return [];
+      if (path.includes('/skills/demo-skill')) return { name: 'demo-skill', content: '---\nname: demo-skill\n---\n\nRaw skill body.' };
       if (path.endsWith('/api/skills')) return [{ name: 'demo-skill', description: 'demo', size: '1 KB', modified: new Date().toISOString() }];
       return [];
     } };
@@ -146,6 +147,56 @@ test('lists render as one container; hook rows SHOW wired state (DOET visibility
   assert.ok(rows[1].querySelector('[data-hf-wire]'), 'unwired file offers a one-click Wire action');
   assert.ok(!rows[0].querySelector('[data-hf-wire]'), 'wired file does not nag');
   list.querySelectorAll('.icon-act').forEach(a => assert.ok(a.title, 'every icon action has a tooltip'));
+});
+
+test('cards offer ⧉ Copy content — copies the exact raw file to the clipboard', async (t) => {
+  if (skipIfNoDom(t)) return;
+  await w.eval('loadSkills()');
+  await new Promise(r => setTimeout(r, 30));
+  const btn = w.document.querySelector('#skills-grid .skill-card details.more-menu [data-copy]');
+  assert.ok(btn, '⋯ menu contains a Copy content action');
+  w._lastClip = null;
+  btn.onclick();
+  await new Promise(r => setTimeout(r, 30));
+  assert.equal(w._lastClip, '---\nname: demo-skill\n---\n\nRaw skill body.', 'clipboard got the exact file content');
+});
+
+test('hook file rows offer ⧉ copy (raw script content)', async (t) => {
+  if (skipIfNoDom(t)) return;
+  w.eval(`renderHookFiles([{ name: 'c.mjs', size: '1 KB', modified: new Date().toISOString(), content: '#!/usr/bin/env node\\n// hook body' }], {})`);
+  const btn = w.document.querySelector('#hook-files-list [data-hf-copy]');
+  assert.ok(btn, 'copy action present on hook file row');
+  w._lastClip = null;
+  btn.onclick();
+  await new Promise(r => setTimeout(r, 20));
+  assert.equal(w._lastClip, '#!/usr/bin/env node\n// hook body', 'clipboard got the exact script');
+});
+
+test('workflow usage: per-component copy, but no copy of the whole workflow', async (t) => {
+  if (skipIfNoDom(t)) return;
+  w.eval(`
+    const el = document.getElementById('wfUsageBody');
+    el.innerHTML = buildWorkflowUsageHtml({ name: 'test-wf', components: [
+      { type: 'skill', name: 'comp-skill', content: 'SKILL RAW' },
+      { type: 'hook',  name: 'guard-hook', event: 'PreToolUse', content: 'HOOK RAW' },
+    ]});
+    wireOneShotCopyButtons(el);
+  `);
+  const body = w.document.getElementById('wfUsageBody');
+  const btns = body.querySelectorAll('[data-copy-comp]');
+  assert.equal(btns.length, 2, 'one copy per component');
+  assert.ok(!body.querySelector('[data-copy="test-wf"]'), 'no whole-workflow content copy');
+  w._lastClip = null;
+  btns[0].onclick();
+  await new Promise(r => setTimeout(r, 20));
+  assert.equal(w._lastClip, 'SKILL RAW', 'component content copied verbatim');
+});
+
+test('elsewhere + file-explorer rows expose ⧉ copy', (t) => {
+  if (skipIfNoDom(t)) return;
+  w.eval(`renderElsewhereHooks([{ path: 'skills/x/hooks/h.mjs', size: '1 KB', modified: new Date().toISOString() }])`);
+  assert.ok(w.document.querySelector('#hook-elsewhere-wrap [data-ew-copy]'), 'elsewhere rows have copy');
+  assert.equal(typeof w.copyFileByPath, 'function', 'shared path-copy helper exists');
 });
 
 test('keybindings + hooks subtabs render (regression)', async (t) => {
