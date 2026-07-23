@@ -490,6 +490,21 @@ test('generation prompts carry the internal planning phase', async () => {
   assert.ok(s.readShimPrompt().includes('BEFORE WRITING'), 'hook planning phase');
 });
 
+test('lint/resolve fixes grants on an existing artifact in place (🔧 button)', async () => {
+  await s.api('POST', '/skills', { name: 'resolve-me', content: '---\nname: resolve-me\ndescription: d\nallowed-tools: Read\n---\n\n# R\n\n1. Edit the file with Edit.\n2. Use mcp__probe__sync to push state.\n' });
+  const r = await s.api('POST', '/lint/resolve', { type: 'skill', name: 'resolve-me' });
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+  assert.equal(r.data.changed, true);
+  assert.ok(r.data.added.includes('Edit') && r.data.added.includes('mcp__probe__sync'), 'grants added: ' + JSON.stringify(r.data.added));
+  const after = (await s.api('GET', '/skills')).data.find(x => x.name === 'resolve-me');
+  assert.deepEqual(after.lint.missing, [], 'badge/button condition cleared');
+  assert.ok(after.allowedTools.includes('Edit'), 'frontmatter on disk updated');
+  const again = await s.api('POST', '/lint/resolve', { type: 'skill', name: 'resolve-me' });
+  assert.equal(again.data.changed, false, 'idempotent');
+  assert.equal((await s.api('POST', '/lint/resolve', { type: 'skill', name: '../../outside' })).status, 400, 'traversal guarded');
+  assert.equal((await s.api('POST', '/lint/resolve', { type: 'skill', name: 'no-such-skill' })).status, 404);
+});
+
 test('CLI generation is pinned to Opus (authoring quality over latency)', async () => {
   await s.api('POST', '/ai/generate-skill', { prompt: 'model pin probe', provider: 'claude-cli', type: 'skill' });
   assert.ok(s.readShimArgs().includes('--model opus'), 'generate uses opus: ' + s.readShimArgs());

@@ -1,6 +1,6 @@
 # Claude Manager — Test Suite & Bug Fixes
 
-239 tests. Run with `npm test` (Node ≥18). Each test file boots an isolated server instance with its own temp `claudeDir`, temp `HOME` (isolated `~/.claude.json`), isolated config file, and a fake `claude` CLI shim on PATH that records every invocation — so no network access or real Claude Code install is needed.
+241 tests. Run with `npm test` (Node ≥18). Each test file boots an isolated server instance with its own temp `claudeDir`, temp `HOME` (isolated `~/.claude.json`), isolated config file, and a fake `claude` CLI shim on PATH that records every invocation — so no network access or real Claude Code install is needed.
 
 ## Bugs found and fixed
 

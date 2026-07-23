@@ -1226,6 +1226,27 @@ function enforceToolConsistency(type, content) {
   return { content, lint };
 }
 
+// One-click fix for the '⚠ grants incomplete' badge: runs the SAME enforcement
+// the generation pipeline uses, on the file already on disk. Bash still never
+// auto-granted — it stays a suggestion for the user to add explicitly.
+app.post('/api/lint/resolve', (req, res) => {
+  const { type, name } = req.body;
+  if (!name?.trim()) return res.status(400).json({ error: 'name is required' });
+  const paths = {
+    skill:   join(claudeDir, 'skills', name, 'SKILL.md'),
+    agent:   join(claudeDir, 'agents', name + '.md'),
+    command: join(claudeDir, 'commands', name + '.md'),
+  };
+  const fp = paths[type];
+  if (!fp) return res.status(400).json({ error: 'type must be skill, agent, or command' });
+  if (!resolve(fp).startsWith(resolve(claudeDir) + path.sep)) return res.status(400).json({ error: 'Invalid name' });
+  if (!existsSync(fp)) return res.status(404).json({ error: `${type} not found: ${name}` });
+  const original = readFileSync(fp, 'utf8');
+  const { content: fixed, lint } = enforceToolConsistency(type, original);
+  if (fixed !== original) writeFileSync(fp, fixed, 'utf8');
+  res.json({ ok: true, changed: fixed !== original, added: lint.autoAdded || [], lint });
+});
+
 app.get('/api/skills', (req, res) => {
   const skillsDir = join(claudeDir, 'skills');
   if (!existsSync(skillsDir)) return res.json([]);

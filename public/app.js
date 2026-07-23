@@ -3143,10 +3143,13 @@ function renderItemGrid(gridId, items, type, icon, onEdit, onDelete, useDisplayN
         <div class="skill-card-actions">
           ${(type === 'skill' || type === 'agent' || type === 'command') && !item.external ? `<button class="btn btn-run btn-sm" data-run="${escHtml(item.name)}" title="Run one-shot, streaming JSONL output to a file">▶ Run</button>` : ''}
           <button class="btn btn-secondary btn-sm" data-edit="${escHtml(item.name)}"${item.external ? ` data-edit-path="${escHtml(item.path)}"` : ''} title="Edit">✎ Edit</button>
+          <button class="icon-act" data-copy="${escHtml(item.name)}"${item.external ? ` data-copy-path="${escHtml(item.path)}"` : ''} title="Copy the exact file content to the clipboard">⧉</button>
+          ${item.lint?.missing?.length && !item.external ? `<button class="icon-act" data-resolve="${escHtml(item.name)}" style="color:var(--warning)" title="Fix incomplete tool grants
+Why this shows: the body uses ${escHtml(item.lint.missing.join(', '))} but allowed-tools never grants ${item.lint.missing.length > 1 ? 'them' : 'it'} — so this ${escHtml(type)} stops for permission prompts at runtime (one-shot runs rely on the grant).
+Click to fix: the missing grant${item.lint.missing.length > 1 ? 's are' : ' is'} added to the frontmatter automatically. Bash is never auto-granted — add an exact Bash(<command> *) rule via ✎ Edit.">🔧</button>` : ''}
           <details class="more-menu">
             <summary title="More actions">⋯</summary>
             <div class="more-menu-list">
-              <button class="btn btn-sm" data-copy="${escHtml(item.name)}"${item.external ? ` data-copy-path="${escHtml(item.path)}"` : ''}>⧉ Copy content</button>
               ${type === 'skill' ? `<button class="btn btn-sm" data-files="${escHtml(item.name)}">📂 Browse files</button>` : ''}
               <button class="btn btn-sm" data-explain="${escHtml(item.name)}">🤖 Explain with AI</button>
               ${type !== 'command' && !item.external ? `<button class="btn btn-sm" data-improve="${escHtml(item.name)}">✨ Improve with AI</button>` : ''}
@@ -3164,6 +3167,19 @@ function renderItemGrid(gridId, items, type, icon, onEdit, onDelete, useDisplayN
   });
   grid.querySelectorAll('[data-copy]').forEach(b => {
     b.onclick = () => copyItemContent(type, b.dataset.copy, b.dataset.copyPath || undefined);
+  });
+  grid.querySelectorAll('[data-resolve]').forEach(b => {
+    b.onclick = async () => {
+      b.disabled = true;
+      try {
+        const r = await api('POST', '/lint/resolve', { type, name: b.dataset.resolve });
+        if (r.changed) toast(`🔧 ${b.dataset.resolve}: grants fixed — added ${r.added.join(', ')}`);
+        else toast('Nothing auto-fixable' + (r.lint?.suggestions?.length ? ' — ' + r.lint.suggestions[0] : ''), 'info');
+        if (r.lint?.suggestions?.length && r.changed) toast('⚠ ' + r.lint.suggestions[0], 'error');
+        // Refresh the section so the badge/button reflect the new state
+        if (type === 'skill') loadSkills(); else if (type === 'agent') loadAgents(); else loadCommands();
+      } catch (e) { toast('Fix failed: ' + e.message, 'error'); b.disabled = false; }
+    };
   });
   grid.querySelectorAll('[data-explain]').forEach(b => {
     b.onclick = async () => {

@@ -35,8 +35,9 @@ before(async (t) => {
       if (path.includes('/overview')) return { skills: 1, agents: 2, hookEvents: 3, plugins: 4, enabledPlugins: 2, mcpServers: 5, commands: 6, hookFiles: 0, model: 'default', path: '/x' };
       if (path.includes('/hooks')) return { files: [], elsewhere: [], settings: {} };
       if (path.includes('/workflows')) return [];
+      if (path.includes('/lint/resolve')) return { ok: true, changed: true, added: ['Edit'], lint: { missing: [], unused: [], suggestions: [] } };
       if (path.includes('/skills/demo-skill')) return { name: 'demo-skill', content: '---\nname: demo-skill\n---\n\nRaw skill body.' };
-      if (path.endsWith('/api/skills')) return [{ name: 'demo-skill', description: 'demo', size: '1 KB', modified: new Date().toISOString() }];
+      if (path.endsWith('/api/skills')) return [{ name: 'demo-skill', description: 'demo', size: '1 KB', modified: new Date().toISOString(), lint: { missing: ['Edit'], unused: [], suggestions: [] } }];
       return [];
     } };
   };
@@ -231,6 +232,23 @@ test('REGRESSION: Improve on a card fetches the real file (lists are metadata-on
   w.document.getElementById('improveClose').onclick();
 });
 
+test('🔧 resolve-grants button: visible on flagged cards, explains itself, calls the fixer', async (t) => {
+  if (skipIfNoDom(t)) return;
+  await w.eval('loadSkills()');
+  await new Promise(r => setTimeout(r, 30));
+  const fix = w.document.querySelector('#skills-grid .skill-card [data-resolve]');
+  assert.ok(fix, 'button shown when lint.missing is non-empty');
+  assert.match(fix.title, /Why this shows/, 'tooltip explains why it appears');
+  assert.match(fix.title, /permission prompts/, 'tooltip explains the consequence');
+  assert.match(fix.title, /Click to fix/, 'tooltip explains what clicking does');
+  assert.match(fix.title, /Bash is never auto-granted/, 'tooltip explains the Bash exception');
+  fix.onclick();
+  await new Promise(r => setTimeout(r, 30));
+  const req = sent.filter(s2 => s2.path.includes('/lint/resolve')).pop();
+  assert.ok(req, 'fixer endpoint called');
+  assert.equal(req.body.name, 'demo-skill');
+});
+
 test('generate modal exposes model choice + opt-in bounded eval', (t) => {
   if (skipIfNoDom(t)) return;
   const sel = w.document.getElementById('sgModel');
@@ -246,8 +264,8 @@ test('cards offer ⧉ Copy content — copies the exact raw file to the clipboar
   if (skipIfNoDom(t)) return;
   await w.eval('loadSkills()');
   await new Promise(r => setTimeout(r, 30));
-  const btn = w.document.querySelector('#skills-grid .skill-card details.more-menu [data-copy]');
-  assert.ok(btn, '⋯ menu contains a Copy content action');
+  const btn = w.document.querySelector('#skills-grid .skill-card .skill-card-actions > [data-copy]');
+  assert.ok(btn, '⧉ Copy is VISIBLE on the card face next to Edit (not hidden in the ⋯ menu)');
   w._lastClip = null;
   btn.onclick();
   await new Promise(r => setTimeout(r, 30));

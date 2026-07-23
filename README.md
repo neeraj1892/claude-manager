@@ -90,7 +90,7 @@ Any modal with a provider picker (Generate, Run, Compose) auto-detects: if the C
 npm test
 ```
 
-239 tests (Node's built-in `node --test`) covering every endpoint and scenario. Each test file boots an isolated server with its own temp `.claude` folder, temp `HOME`, isolated config, a local fixture marketplace/OpenRouter endpoint, and a fake `claude` CLI shim that records invocations — no network or real Claude Code install needed. See [`tests/README.md`](tests/README.md) for the full bug-fix history and scenario list.
+241 tests (Node's built-in `node --test`) covering every endpoint and scenario. Each test file boots an isolated server with its own temp `.claude` folder, temp `HOME`, isolated config, a local fixture marketplace/OpenRouter endpoint, and a fake `claude` CLI shim that records invocations — no network or real Claude Code install needed. See [`tests/README.md`](tests/README.md) for the full bug-fix history and scenario list.
 
 ## Security notes
 
