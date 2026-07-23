@@ -514,6 +514,29 @@ test('lint/resolve fixes grants on an existing artifact in place (🔧 button)',
   assert.equal((await s.api('POST', '/lint/resolve', { type: 'skill', name: 'no-such-skill' })).status, 404);
 });
 
+test('TOKEN DIET: generation strips the agent boot (no MCPs, no skills listing, no session)', async () => {
+  await s.api('POST', '/ai/generate-skill', { prompt: 'diet probe', provider: 'claude-cli', type: 'skill' });
+  const args = s.readShimArgs();
+  assert.ok(args.includes('--strict-mcp-config'), 'MCP schemas skipped: ' + args);
+  assert.ok(args.includes('--mcp-config'), 'empty MCP config supplied');
+  assert.ok(args.includes('--disable-slash-commands'), 'skills listing skipped');
+  assert.ok(args.includes('--no-session'), 'no session persistence');
+});
+
+test('FLYWHEEL: every AI call logs its defect signals; summary aggregates them', async () => {
+  // FENCED_TEST triggers the fence-strip recovery — that firing must be recorded
+  await s.api('POST', '/ai/generate-skill', { prompt: 'FENCED_TEST flywheel', provider: 'claude-cli', type: 'skill' });
+  // eval logs score/verdict
+  await s.api('POST', '/ai/eval-artifact', { type: 'skill', request: 'r', content: '---\nname: ok\n---\nbody', provider: 'claude-cli' });
+  const { status, data } = await s.api('GET', '/ai-usage/summary?days=30');
+  assert.equal(status, 200);
+  const gen = data.prompts.find(p => p.key === 'skill-generate');
+  assert.ok(gen && gen.calls >= 1, 'generation calls recorded: ' + JSON.stringify(data.prompts.map(p => p.key)));
+  assert.ok(gen.fence >= 1, 'fence recovery firing recorded — this is how prompt holes surface');
+  const ev = data.prompts.find(p => p.key === 'eval-artifact');
+  assert.ok(ev && ev.evalCount >= 1 && ev.evalAvg !== null, 'eval scores aggregated');
+});
+
 test('CLI generation is pinned to Opus (authoring quality over latency)', async () => {
   await s.api('POST', '/ai/generate-skill', { prompt: 'model pin probe', provider: 'claude-cli', type: 'skill' });
   assert.ok(s.readShimArgs().includes('--model opus'), 'generate uses opus: ' + s.readShimArgs());

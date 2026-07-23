@@ -1035,10 +1035,57 @@ document.getElementById('checkUpdatesBtn').onclick = async () => {
 };
 
 // ===== CUSTOMIZABLE AI PROMPTS =====
+// Prompt health: aggregates the defect signals every AI call logs (fence-strip,
+// escape-fix, prose-slice, JSON failures, lint gaps, eval scores). A rising
+// rate = a hole in that meta prompt. Zero AI calls — pure local counters.
+async function loadPromptHealth() {
+  let el = document.getElementById('promptHealth');
+  const list = document.getElementById('prompts-list');
+  if (!el && list) {
+    list.insertAdjacentHTML('afterend', '<div id="promptHealth" style="margin-top:16px"></div>');
+    el = document.getElementById('promptHealth');
+  }
+  if (!el) return;
+  try {
+    const { days, prompts } = await api('GET', '/ai-usage/summary?days=30');
+    if (!prompts.length) {
+      el.innerHTML = '<div class="subhead">Prompt health</div><div style="font-size:12px;color:var(--text-dim)">No AI usage recorded yet — every generation logs its recovery signals here (fence-strip, escape-fix, lint gaps, eval scores). Rising rates point at the prompt with the hole.</div>';
+      return;
+    }
+    const pct = (n, c) => c ? Math.round((n / c) * 100) + '%' : '—';
+    el.innerHTML = `
+      <div class="subhead">Prompt health <span style="font-weight:400;color:var(--text-dim)">last ${days} days — each recovery firing means a prompt failed to prevent something</span></div>
+      <table class="kb-table" style="font-size:12px;width:100%">
+        <thead><tr>
+          <th style="text-align:left">Prompt</th><th>Calls</th>
+          <th title="Model wrapped output in code fences despite the contract">fences</th>
+          <th title="Model chat-escaped markdown (\\---) despite the contract">escapes</th>
+          <th title="Leading prose had to be sliced off before the frontmatter">prose</th>
+          <th title="JSON output failed to parse">bad JSON</th>
+          <th title="Tools used but not granted — auto-fixed, but the prompt should have prevented it">grants fixed</th>
+          <th title="Average self-eval score (only when eval was opted in)">eval avg</th>
+          <th title="Calls that errored">errors</th>
+        </tr></thead>
+        <tbody>${prompts.map(p => `
+          <tr>
+            <td style="text-align:left"><code>${escHtml(p.key)}</code></td><td>${p.calls}</td>
+            <td>${pct(p.fence, p.calls)}</td><td>${pct(p.escape, p.calls)}</td><td>${pct(p.slice, p.calls)}</td>
+            <td>${pct(p.jsonFail, p.calls)}</td><td>${p.autoAdded || 0}</td>
+            <td>${p.evalAvg != null ? p.evalAvg + '/10 (' + p.evalCount + ')' : '—'}</td>
+            <td>${p.errors || 0}</td>
+          </tr>`).join('')}</tbody>
+      </table>
+      <div style="font-size:11px;color:var(--text-dim);margin-top:6px">💡 Review monthly: a rate that climbs after a prompt edit = regression; a persistently high column = hole in that prompt. Data: <code>claude-manager-ai-usage.jsonl</code> (local, gitignored).</div>`;
+  } catch (e) {
+    el.innerHTML = `<div style="font-size:12px;color:var(--danger)">Prompt health unavailable: ${escHtml(e.message)}</div>`;
+  }
+}
+
 async function loadPromptsList() {
   const el = document.getElementById('prompts-list');
   if (!el) return;
   el.innerHTML = '<div style="padding:16px;color:var(--text-muted);font-size:13px">Loading prompts…</div>';
+  loadPromptHealth();
   try {
     const prompts = await api('GET', '/prompts');
     el.innerHTML = `<div class="list">${prompts.map(p => `

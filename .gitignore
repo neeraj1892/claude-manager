@@ -2,3 +2,4 @@ node_modules/
 claude-manager.config.json
 *.log
 .DS_Store
+claude-manager-ai-usage.jsonl

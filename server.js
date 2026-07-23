@@ -1,6 +1,6 @@
 'use strict';
 const { createServer } = require('http');
-const { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, statSync, rmSync, renameSync, unlinkSync, createWriteStream } = require('fs');
+const { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, statSync, rmSync, renameSync, unlinkSync, createWriteStream, appendFileSync } = require('fs');
 const { join, resolve, dirname, basename } = require('path');
 const { homedir, platform } = require('os');
 const { execSync, exec, spawn } = require('child_process');
@@ -724,17 +724,31 @@ function callOpenRouter(apiKey, model, systemPrompt, userPrompt) {
 const CLI_GEN_MODEL = 'opus';
 const CLI_MODEL_RE = /^[a-zA-Z0-9.:_-]{1,40}$/;
 
-function callClaudeCli(fullPrompt, model = CLI_GEN_MODEL) {
+// TOKEN DIET: `claude -p` boots a full agent session — system prompt, every
+// MCP server's tool schemas, the skills listing. Generation needs NONE of it
+// (we already pass --allowedTools ""). These flags strip the boot overhead,
+// which dwarfs our ~1.2K-token meta prompts. Empty MCP config goes via a temp
+// file to avoid JSON shell-quoting differences on Windows.
+const EMPTY_MCP_CONFIG = join(tmpdir(), 'claude-manager-empty-mcp.json');
+try { writeFileSync(EMPTY_MCP_CONFIG, '{"mcpServers":{}}'); } catch {}
+const CLI_DIET_FLAGS = `--strict-mcp-config --mcp-config "${EMPTY_MCP_CONFIG}" --disable-slash-commands --no-session`;
+
+function callClaudeCli(fullPrompt, model = CLI_GEN_MODEL, dietFlags = CLI_DIET_FLAGS) {
   return new Promise((resolve, reject) => {
     // Unique per process + call: Date.now() alone collides when two
     // generations run in the same millisecond, corrupting both prompts.
     const tmpFile = join(tmpdir(), `claude-prompt-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}.txt`);
     try { writeFileSync(tmpFile, fullPrompt, 'utf8'); } catch (e) { return reject(new Error('Failed to write temp file: ' + e.message)); }
     const safeModel = CLI_MODEL_RE.test(String(model)) ? model : CLI_GEN_MODEL;
+    const base = `claude -p --model ${safeModel} --dangerously-skip-permissions --allowedTools ""${dietFlags ? ' ' + dietFlags : ''}`;
     const cmd = process.platform === 'win32'
-      ? `type "${tmpFile.replace(/"/g, '\\"')}" | claude -p --model ${safeModel} --dangerously-skip-permissions --allowedTools ""`
-      : `cat "${tmpFile.replace(/"/g, '\\"')}" | claude -p --model ${safeModel} --dangerously-skip-permissions --allowedTools ""`;
+      ? `type "${tmpFile.replace(/"/g, '\\"')}" | ${base}`
+      : `cat "${tmpFile.replace(/"/g, '\\"')}" | ${base}`;
     exec(cmd, { shell: true, timeout: 120000, maxBuffer: 10 * 1024 * 1024 }, (err, stdout, stderr) => {
+      // Older Claude Code versions may not know the diet flags — retry once bare
+      if (err && dietFlags && /unknown option|unrecognized|unknown argument/i.test(stderr || err.message || '')) {
+        return callClaudeCli(fullPrompt, model, '').then(resolve, reject).finally(() => { try { unlinkSync(tmpFile); } catch {} });
+      }
       try { unlinkSync(tmpFile); } catch {}
       if (err) return reject(new Error(stderr?.trim() || err.message));
       if (!stdout.trim()) return reject(new Error('Claude CLI returned empty output'));
@@ -1158,6 +1172,54 @@ app.put('/api/settings', (req, res) => {
 });
 
 // --- API: Skills ---
+
+// ===== AI USAGE LOG (prompt-improvement flywheel) =====
+// One JSONL line per AI call, recording the DEFECT SIGNALS that already fire
+// server-side (fence-strip, unescape, prose-slice recovery, JSON parse
+// failures, lint gaps, eval verdicts). Every recovery firing means a meta
+// prompt failed to prevent something — the health panel aggregates these so
+// holes surface as counters instead of transcript-reading. Local file, no AI
+// calls, zero cost.
+const AI_USAGE_PATH = join(__dirname, 'claude-manager-ai-usage.jsonl');
+function logAiUsage(entry) {
+  try { appendFileSync(AI_USAGE_PATH, JSON.stringify({ ts: new Date().toISOString(), ...entry }) + '\n'); } catch {}
+}
+
+app.get('/api/ai-usage/summary', (req, res) => {
+  const days = Math.min(365, Math.max(1, parseInt(req.query.days, 10) || 30));
+  const cutoff = Date.now() - days * 86400000;
+  const groups = {};
+  try {
+    if (existsSync(AI_USAGE_PATH)) {
+      for (const line of readFileSync(AI_USAGE_PATH, 'utf8').split('\n')) {
+        if (!line.trim()) continue;
+        let e; try { e = JSON.parse(line); } catch { continue; }
+        if (new Date(e.ts).getTime() < cutoff) continue;
+        const key = e.promptId || e.ep || 'unknown';
+        const g = groups[key] = groups[key] || { key, calls: 0, fence: 0, escape: 0, slice: 0, jsonFail: 0, lintMissing: 0, autoAdded: 0, evalScores: [], evalRevise: 0, errors: 0 };
+        g.calls++;
+        if (e.fence) g.fence++;
+        if (e.escape) g.escape++;
+        if (e.slice) g.slice++;
+        if (e.jsonFail) g.jsonFail++;
+        if (e.error) g.errors++;
+        if (e.lintMissing) g.lintMissing += e.lintMissing;
+        if (e.autoAdded) g.autoAdded += e.autoAdded;
+        if (typeof e.score === 'number') g.evalScores.push(e.score);
+        if (e.verdict === 'revise') g.evalRevise++;
+      }
+    }
+  } catch {}
+  res.json({
+    days,
+    prompts: Object.values(groups).map(g => ({
+      ...g,
+      evalAvg: g.evalScores.length ? +(g.evalScores.reduce((a, b) => a + b, 0) / g.evalScores.length).toFixed(1) : null,
+      evalScores: undefined,
+      evalCount: g.evalScores.length,
+    })).sort((a, b) => b.calls - a.calls),
+  });
+});
 
 // ===== TOOL-CONSISTENCY LINT =====
 // The invariant our prompts teach ("every tool the body uses must be granted")
@@ -1826,17 +1888,23 @@ app.post('/api/ai/generate-skill', async (req, res) => {
       if (!claudeCliAvailable) return res.status(400).json({ error: 'Claude CLI not found. Install Claude Code or use OpenRouter instead.' });
       content = await callClaudeCli(fullPrompt);
     }
+    const _sig = { fence: /^```/.test(content), escape: false, slice: false };
     content = content.replace(/^```[a-zA-Z]*\n?/, '').replace(/\n?```$/, '').trim();
 
     // Markdown types: undo chat-style escaping (\--- &#x20; …) BEFORE the fence
     // checks — otherwise the recovery regex slices at the closing fence and
     // silently amputates the frontmatter. (Hooks excluded: code legitimately
     // contains backslash sequences.)
-    if (type !== 'hook') content = unescapeClaudeMarkdown(content);
+    if (type !== 'hook') {
+      const beforeUnescape = content;
+      content = unescapeClaudeMarkdown(content);
+      _sig.escape = beforeUnescape !== content;
+    }
 
     // For skill/agent: strip any leading prose before the first YAML frontmatter block
     if (type === 'skill' || type === 'agent') {
       if (!content.startsWith('---')) {
+        _sig.slice = true;
         const idx = content.search(/(?:^|\n)---\n/);
         if (idx !== -1) content = content.slice(idx).replace(/^\n/, '').trim();
       }
@@ -1847,6 +1915,7 @@ app.post('/api/ai/generate-skill', async (req, res) => {
     if (type === 'command') {
       // Commands are plain markdown — accept frontmatter or a heading; strip leading prose otherwise
       if (!content.startsWith('---') && !content.startsWith('#')) {
+        _sig.slice = true;
         const idx = content.search(/(?:^|\n)(?:---\n|# )/);
         if (idx !== -1) content = content.slice(idx).replace(/^\n/, '').trim();
       }
@@ -1867,8 +1936,17 @@ app.post('/api/ai/generate-skill', async (req, res) => {
     let lint;
     if (type !== 'hook') ({ content, lint } = enforceToolConsistency(type, content));
 
+    logAiUsage({
+      ep: 'generate', type, provider: provider === 'openrouter' ? 'openrouter' : 'claude-cli',
+      promptId: creatorContent?.trim() ? 'skill-creator' : (type === 'hook' ? 'hook-generate' : type + '-generate'),
+      model: provider === 'openrouter' ? undefined : (cliModel || CLI_GEN_MODEL),
+      fence: _sig.fence, escape: _sig.escape, slice: _sig.slice,
+      lintMissing: lint?.missing?.length || 0, autoAdded: lint?.autoAdded?.length || 0,
+      outLen: content.length,
+    });
     res.json({ content, type, lint });
   } catch (e) {
+    logAiUsage({ ep: 'generate', type, error: true });
     res.status(500).json({ error: e.message });
   }
 });
@@ -2120,13 +2198,17 @@ app.post('/api/ai/eval-artifact', async (req, res) => {
     }
     const evals = rounds.filter(r => r.score !== undefined);
     const final = evals[evals.length - 1];
+    logAiUsage({ ep: 'eval', promptId: 'eval-artifact', type, score: final.score, verdict: final.verdict, revised: changed, capped: evals.length >= MAX_EVAL_ROUNDS && final.verdict !== 'pass' });
     res.json({
       content: current, changed, rounds,
       score: final.score, verdict: final.verdict,
       capped: evals.length >= MAX_EVAL_ROUNDS && final.verdict !== 'pass',
     });
   } catch (e) {
-    if (e instanceof SyntaxError) return res.status(500).json({ error: 'Evaluator returned invalid JSON. Try again.' });
+    if (e instanceof SyntaxError) {
+      logAiUsage({ ep: 'eval', promptId: 'eval-artifact', type, jsonFail: true });
+      return res.status(500).json({ error: 'Evaluator returned invalid JSON. Try again.' });
+    }
     res.status(e.status || 500).json({ error: e.message });
   }
 });
@@ -2147,10 +2229,13 @@ app.post('/api/ai/improve-skill', async (req, res) => {
       if (!claudeCliAvailable) return res.status(400).json({ error: 'Claude CLI not found.' });
       improved = await callClaudeCli(fullPrompt);
     }
+    const hadFence = /^```/.test(improved);
     improved = improved.replace(/^```[a-zA-Z]*\n?/, '').replace(/\n?```$/, '').trim();
-    if (type !== 'hook') improved = unescapeClaudeMarkdown(improved);
+    let hadEscape = false;
+    if (type !== 'hook') { const b = improved; improved = unescapeClaudeMarkdown(improved); hadEscape = b !== improved; }
     let lint;
     if (type !== 'hook') ({ content: improved, lint } = enforceToolConsistency(type, improved));
+    logAiUsage({ ep: 'improve', promptId: 'improve', type, fence: hadFence, escape: hadEscape, lintMissing: lint?.missing?.length || 0, autoAdded: lint?.autoAdded?.length || 0 });
     res.json({ content: improved, type, lint });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -2269,9 +2354,13 @@ app.post('/api/ai/generate-workflow-plan', async (req, res) => {
     if (!Array.isArray(plan.components) || !plan.components.length) {
       return res.status(500).json({ error: 'AI returned an invalid plan — try rephrasing your goal.' });
     }
+    logAiUsage({ ep: 'workflow-plan', promptId: 'workflow-plan', fence: /^```/.test(raw) });
     res.json(plan);
   } catch (e) {
-    if (e instanceof SyntaxError) return res.status(500).json({ error: 'AI returned invalid JSON. Try again.' });
+    if (e instanceof SyntaxError) {
+      logAiUsage({ ep: 'workflow-plan', promptId: 'workflow-plan', jsonFail: true });
+      return res.status(500).json({ error: 'AI returned invalid JSON. Try again.' });
+    }
     res.status(500).json({ error: e.message });
   }
 });
@@ -2432,6 +2521,7 @@ app.post('/api/ai/compose-workflow', async (req, res) => {
       else missing.push({ type: c.type, name: c.name, description: c.role || 'Proposed by the AI but not installed.' });
     }
     const feasible = components.length && !missing.length ? 'yes' : components.length ? 'partial' : 'no';
+    logAiUsage({ ep: 'compose', promptId: 'compose-workflow', fence: /^```/.test(raw) });
     res.json({
       feasible: plan.feasible && ['yes', 'partial', 'no'].includes(plan.feasible) ? (missing.length && plan.feasible === 'yes' ? 'partial' : plan.feasible) : feasible,
       summary: plan.summary || '',
@@ -2440,7 +2530,10 @@ app.post('/api/ai/compose-workflow', async (req, res) => {
       inventoryCounts: { skills: inventory.skills.length, agents: inventory.agents.length, hooks: inventory.hooks.length, commands: inventory.commands.length },
     });
   } catch (e) {
-    if (e instanceof SyntaxError) return res.status(500).json({ error: 'AI returned invalid JSON. Try again or rephrase the goal.' });
+    if (e instanceof SyntaxError) {
+      logAiUsage({ ep: 'compose', promptId: 'compose-workflow', jsonFail: true });
+      return res.status(500).json({ error: 'AI returned invalid JSON. Try again or rephrase the goal.' });
+    }
     res.status(500).json({ error: e.message });
   }
 });
