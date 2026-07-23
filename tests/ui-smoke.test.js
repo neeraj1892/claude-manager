@@ -176,6 +176,25 @@ test('lists render as one container; hook rows SHOW wired state (DOET visibility
   list.querySelectorAll('.icon-act').forEach(a => assert.ok(a.title, 'every icon action has a tooltip'));
 });
 
+test('REGRESSION: Improve on a card fetches the real file (lists are metadata-only)', async (t) => {
+  if (skipIfNoDom(t)) return;
+  await w.eval('loadSkills()');
+  await new Promise(r => setTimeout(r, 30));
+  const btn = w.document.querySelector('#skills-grid .skill-card [data-improve]');
+  assert.ok(btn, 'Improve action present');
+  btn.onclick();
+  await new Promise(r => setTimeout(r, 30));
+  assert.ok(w.document.getElementById('improveModal').classList.contains('open'), 'modal opened');
+  assert.match(w.document.getElementById('improveModalTitle').textContent, /demo-skill/);
+  await w.document.getElementById('improveRunBtn').onclick();
+  await new Promise(r => setTimeout(r, 30));
+  const req = sent.filter(s => s.path.includes('/ai/improve-skill')).pop();
+  assert.ok(req, 'improve request sent');
+  assert.equal(req.body.content, '---\nname: demo-skill\n---\n\nRaw skill body.',
+    'posts the fetched file content — was empty string → server 400');
+  w.document.getElementById('improveClose').onclick();
+});
+
 test('cards offer ⧉ Copy content — copies the exact raw file to the clipboard', async (t) => {
   if (skipIfNoDom(t)) return;
   await w.eval('loadSkills()');

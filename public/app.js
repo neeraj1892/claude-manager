@@ -3132,21 +3132,33 @@ function renderItemGrid(gridId, items, type, icon, onEdit, onDelete, useDisplayN
     b.onclick = () => copyItemContent(type, b.dataset.copy, b.dataset.copyPath || undefined);
   });
   grid.querySelectorAll('[data-explain]').forEach(b => {
-    b.onclick = () => {
+    b.onclick = async () => {
       const it = items.find(x => x.name === b.dataset.explain);
       if (!it) return;
       const meta = {};
       if (it.trigger) meta.scope = it.trigger;
       if (it.model)   meta.scope = (meta.scope ? meta.scope + ' · ' : '') + it.model;
-      showExplainer(b.dataset.explain, it.content || it.description || '', type, meta);
+      // List endpoints are metadata-only — fetch the real file so the AI
+      // explains the content, not just the description.
+      let content = it.content;
+      if (!content) { try { content = await fetchItemContent(type, it.name, it.path); } catch {} }
+      showExplainer(b.dataset.explain, content || it.description || '', type, meta);
     };
   });
   grid.querySelectorAll('[data-improve]').forEach(b => {
-    b.onclick = () => {
+    b.onclick = async () => {
       const it = items.find(x => x.name === b.dataset.improve);
       if (!it) return;
       const apiPath = type === 'skill' ? 'skills' : type === 'agent' ? 'agents' : 'commands';
-      openImproveModal(it.name, type, it.content || '', async (newContent) => {
+      // List endpoints are metadata-only — without this fetch the improve
+      // request posts empty content and the server rejects it with 400.
+      let content = it.content;
+      if (!content) {
+        try { content = await fetchItemContent(type, it.name, it.path); }
+        catch (e) { toast(`Could not load ${it.name}: ${e.message}`, 'error'); return; }
+      }
+      if (!content) { toast(`Could not load ${it.name} — file is empty or missing`, 'error'); return; }
+      openImproveModal(it.name, type, content, async (newContent) => {
         await api('PUT', `/${apiPath}/${encodeURIComponent(it.name)}`, { content: newContent });
         // Refresh the section
         if (type === 'skill') loadSkills();
