@@ -25,6 +25,7 @@ before(async (t) => {
   w.fetch = async (path, opts) => {
     sent.push({ path, method: opts?.method || 'GET', body: opts?.body ? JSON.parse(opts.body) : undefined });
     return { ok: true, status: 200, json: async () => {
+      if (path.includes('/ai/generate-command')) return { bash: "cat << 'PROMPT' | claude -p --model opus > generated-skill.md\nSYS\nmake a skill\nPROMPT", powershell: "@'\nSYS\n'@ | claude -p | Out-File generated-skill.md", outFile: 'generated-skill.md' };
       if (path.includes('/ai/generate-skill')) return { content: '#!/usr/bin/env node\n// ok', type: 'hook' };
       if (path.includes('/status')) return { valid: true, path: '/x', platform: 'darwin' };
       if (path.includes('/keybindings')) return { content: '', exists: false };
@@ -273,6 +274,20 @@ test('🔧 resolve-grants button: visible on flagged cards, explains itself, cal
   const req = sent.filter(s2 => s2.path.includes('/lint/resolve')).pop();
   assert.ok(req, 'fixer endpoint called');
   assert.equal(req.body.name, 'demo-skill');
+});
+
+test('generate modal offers a copy-the-command option (run it yourself)', async (t) => {
+  if (skipIfNoDom(t)) return;
+  assert.ok(w.document.getElementById('sgManualWrap'), 'run-it-yourself section present in generate modal');
+  w.document.getElementById('skillGenPrompt').value = 'a changelog skill';
+  const wrap = w.document.getElementById('sgManualWrap');
+  wrap.open = true;
+  await w.eval('refreshSgManualCmd()');
+  await new Promise(r => setTimeout(r, 20));
+  const cmd = w.document.getElementById('sgManualCmd').value;
+  assert.ok(cmd.includes('claude -p'), 'command populated from the endpoint: ' + cmd.slice(0, 40));
+  const req = sent.find(s2 => s2.path.includes('/ai/generate-command'));
+  assert.ok(req && req.body.prompt === 'a changelog skill', 'sends the typed prompt');
 });
 
 test('generate modal exposes model choice + opt-in bounded eval', (t) => {

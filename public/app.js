@@ -5926,6 +5926,48 @@ document.getElementById('skillGenModal').addEventListener('click', e => {
   if (!e.target.dataset.sgprompt) return;
   document.getElementById('skillGenPrompt').value = e.target.dataset.sgprompt;
   document.getElementById('skillGenPrompt').focus();
+  refreshSgManualCmd();
+});
+
+// "Run it yourself" command for GENERATION — the exact prompt the app sends,
+// as a copy-paste terminal command (parallels the Run modal's manual command).
+let _sgCmdShell = 'bash';
+let _sgCmd = null;
+async function refreshSgManualCmd() {
+  const wrap = document.getElementById('sgManualWrap');
+  const out = document.getElementById('sgManualCmd');
+  if (!wrap || !out || !wrap.open) return;
+  const prompt = document.getElementById('skillGenPrompt')?.value.trim();
+  if (!prompt) { out.value = ''; _sgCmd = null; return; }
+  try {
+    let creatorContent;
+    if (skillGenMethod === 'skill-creator' && _skillCreators.length) {
+      const select = document.getElementById('sgCreatorSelect');
+      const selectedName = (select?.style.display !== 'none' && select?.value) ? select.value : _skillCreators[0]?.name;
+      creatorContent = (_skillCreators.find(c => c.name === selectedName) || _skillCreators[0])?.content;
+    }
+    _sgCmd = await api('POST', '/ai/generate-command', {
+      prompt, type: skillGenType,
+      hookLang: skillGenType === 'hook' ? skillGenHookExt : undefined,
+      cliModel: document.getElementById('sgModel')?.value || 'opus',
+      creatorContent,
+    });
+    out.value = _sgCmd[_sgCmdShell] || '';
+  } catch (e) { out.value = '# Could not build command: ' + e.message; }
+}
+document.querySelectorAll('[data-sgcmd-shell]').forEach(b => {
+  b.onclick = () => {
+    _sgCmdShell = b.dataset.sgcmdShell;
+    document.querySelectorAll('[data-sgcmd-shell]').forEach(x => x.classList.toggle('active', x === b));
+    if (_sgCmd) document.getElementById('sgManualCmd').value = _sgCmd[_sgCmdShell] || '';
+  };
+});
+document.getElementById('sgManualWrap')?.addEventListener('toggle', e => { if (e.target.open) refreshSgManualCmd(); });
+document.getElementById('skillGenPrompt')?.addEventListener('input', () => { if (document.getElementById('sgManualWrap')?.open) refreshSgManualCmd(); });
+document.getElementById('sgModel')?.addEventListener('change', refreshSgManualCmd);
+document.getElementById('sgManualCopy')?.addEventListener('click', () => {
+  const v = document.getElementById('sgManualCmd').value;
+  if (v) navigator.clipboard.writeText(v).then(() => toast('Command copied — paste it into your terminal'));
 });
 
 // Enter in skill name → generate

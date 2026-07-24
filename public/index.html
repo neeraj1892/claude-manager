@@ -1569,6 +1569,23 @@
           <span class="matcher-chip" data-sgprompt="A /refactor command that takes a file path as $ARGUMENTS, analyzes it for code smells (long functions, duplication, deep nesting), and refactors it step by step while keeping behavior identical and running tests after each change.">Refactor file</span>
         </div>
       </div>
+      <details id="sgManualWrap" style="margin-top:12px">
+        <summary style="cursor:pointer;font-size:12px;color:var(--text-muted)">💻 Prefer to run it yourself? Copy the terminal command</summary>
+        <div style="display:flex;gap:6px;margin-top:8px;align-items:center;flex-wrap:wrap">
+          <span style="font-size:11px;color:var(--text-dim)">Shell:</span>
+          <button class="gen-type-tab active" data-sgcmd-shell="bash" type="button" style="padding:3px 10px;font-size:11px">bash / zsh</button>
+          <button class="gen-type-tab" data-sgcmd-shell="powershell" type="button" style="padding:3px 10px;font-size:11px">PowerShell</button>
+        </div>
+        <div style="display:flex;gap:6px;margin-top:8px;align-items:flex-start">
+          <textarea id="sgManualCmd" readonly rows="6" style="flex:1;font-family:monospace;font-size:11px;background:var(--surface2)" placeholder="Describe the skill above, then this fills in…"></textarea>
+          <button class="btn btn-secondary btn-sm" id="sgManualCopy" type="button">Copy</button>
+        </div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:6px;line-height:1.5">
+          Runs the <strong>exact same prompt</strong> the app uses (your selected model + methodology), writing the raw file to your current folder. Generation uses no tools, so it's safe to run anywhere.<br>
+          ⚠ The app's automatic clean-up — tool-grant repair, escape/fence fixing, optional eval — only happens when you generate <em>here</em>. Paste the result into the editor via ↺ or re-generate in-app to get those.
+        </div>
+      </details>
+
       <div class="folder-dialog-actions">
         <button class="btn btn-ghost" id="skillGenCancel">Cancel</button>
         <button class="btn btn-primary" id="skillGenGenerate">✨ Generate Skill</button>

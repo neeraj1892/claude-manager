@@ -526,6 +526,24 @@ test('lint/resolve fixes grants on an existing artifact in place (🔧 button)',
   assert.equal((await s.api('POST', '/lint/resolve', { type: 'skill', name: 'no-such-skill' })).status, 404);
 });
 
+test('generate-command: exact copy-paste command mirrors what the app runs', async () => {
+  const { status, data } = await s.api('POST', '/ai/generate-command', { prompt: 'a changelog skill', type: 'skill', cliModel: 'opus' });
+  assert.equal(status, 200, JSON.stringify(data));
+  assert.ok(data.bash.includes("cat << 'PROMPT'") || data.bash.includes("<< 'PROMPT_END"), 'heredoc so the big prompt needs no escaping');
+  assert.ok(data.bash.includes('claude -p --model opus'), 'user model carried');
+  assert.ok(data.bash.includes('--allowedTools ""'), 'generation grants zero tools');
+  assert.ok(data.bash.includes('--strict-mcp-config'), 'token diet flags included');
+  assert.ok(data.bash.includes('expert Claude Code skill author'), 'the real system prompt is embedded');
+  assert.ok(data.bash.trimEnd().endsWith('a changelog skill\nPROMPT') || /a changelog skill\nPROMPT_END/.test(data.bash), 'ends with the user request then the delimiter');
+  assert.ok(data.powershell.includes("@'") && data.powershell.includes('Out-File'), 'PowerShell here-string variant');
+  assert.equal(data.outFile, 'generated-skill.md');
+  // hook variant carries the language + event catalog
+  const hook = await s.api('POST', '/ai/generate-command', { prompt: 'block force push', type: 'hook', hookLang: '.py' });
+  assert.ok(hook.data.bash.includes('Python 3 hooks') && hook.data.bash.includes('UserPromptSubmit'), 'hook prompt + full event catalog embedded');
+  assert.equal(hook.data.outFile, 'generated-hook.py');
+  assert.equal((await s.api('POST', '/ai/generate-command', {})).status, 400, 'prompt required');
+});
+
 test('TOKEN DIET: generation strips the agent boot (no MCPs, no skills listing, no session)', async () => {
   await s.api('POST', '/ai/generate-skill', { prompt: 'diet probe', provider: 'claude-cli', type: 'skill' });
   const args = s.readShimArgs();

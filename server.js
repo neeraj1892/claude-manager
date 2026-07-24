@@ -1894,25 +1894,49 @@ app.put('/api/ai-config', (req, res) => {
   res.json({ ok: true, claudeCli: claudeCliAvailable });
 });
 
-app.post('/api/ai/generate-skill', async (req, res) => {
-  const { prompt, provider, type = 'skill', creatorContent, hookLang, cliModel } = req.body;
-  if (!prompt?.trim()) return res.status(400).json({ error: 'prompt is required' });
-  if (cliModel && !CLI_MODEL_RE.test(cliModel)) return res.status(400).json({ error: 'Invalid model name' });
-  let fullPrompt;
+// Build the exact prompt the generator sends — shared by /generate-skill and
+// /generate-command so the copy-and-run command can never drift from what the
+// app actually runs.
+function buildGenerationPrompt({ prompt, type = 'skill', creatorContent, hookLang }) {
   if (creatorContent?.trim()) {
     // If the content already ends with "Request:" (official skill-creator format), append directly.
     // NB: compare after trimEnd() WITHOUT a trailing space — trimEnd strips it.
     const endsWithRequest = creatorContent.trimEnd().endsWith('Request:');
-    fullPrompt = endsWithRequest
+    return endsWithRequest
       ? creatorContent.trimEnd() + ' ' + prompt.trim()
       : `You are generating a Claude Code ${type} using the methodology below.\n\n${creatorContent.trim()}\n\n========\nCRITICAL: Your response must be ONLY the raw file content with zero preamble or explanation.\nFor skill/agent the very first characters must be "---" (YAML frontmatter). Do NOT write anything before it.\nFor hook the very first line must be a shebang like "#!/usr/bin/env node".\nWrite markdown plainly — NEVER backslash-escape it (no \\---, no \\#) and never use HTML entities like &#x20;.\nEnsure allowed-tools (skills) or tools (agents) lists every tool the body uses, and nothing it doesn't.\nIf the request is ambiguous, implement the most common reasonable interpretation and note the assumption in the description.\n\nRequest: ${prompt.trim()}`;
-  } else {
-    const hookPromptMap = { '.mjs': 'hook-generate-node', '.js': 'hook-generate-node', '.py': 'hook-generate-python', '.sh': 'hook-generate-bash', '.bash': 'hook-generate-bash' };
-    const promptMap = { skill: 'skill-generate', agent: 'agent-generate', command: 'command-generate', hook: (hookLang && hookPromptMap[hookLang]) || 'hook-generate-node' };
-    // Hook prompts carry an {{EVENTS}} token — inject the live, doc-synced event
-    // catalog (same pattern as the custom-event designer). No-op for other types.
-    fullPrompt = getPrompt(promptMap[type] || 'skill-generate').replaceAll('{{EVENTS}}', BUILTIN_HOOK_EVENTS.join(', ')) + prompt.trim();
   }
+  const hookPromptMap = { '.mjs': 'hook-generate-node', '.js': 'hook-generate-node', '.py': 'hook-generate-python', '.sh': 'hook-generate-bash', '.bash': 'hook-generate-bash' };
+  const promptMap = { skill: 'skill-generate', agent: 'agent-generate', command: 'command-generate', hook: (hookLang && hookPromptMap[hookLang]) || 'hook-generate-node' };
+  // Hook prompts carry an {{EVENTS}} token — inject the live, doc-synced event catalog.
+  return getPrompt(promptMap[type] || 'skill-generate').replaceAll('{{EVENTS}}', BUILTIN_HOOK_EVENTS.join(', ')) + prompt.trim();
+}
+
+// The exact copy-paste command to generate this artifact yourself in a terminal.
+// Mirrors callClaudeCli (diet flags, --allowedTools "") but writes raw output to
+// a file. bash heredoc + PowerShell here-string so the big multi-line system
+// prompt needs zero escaping.
+app.post('/api/ai/generate-command', (req, res) => {
+  const { prompt, type = 'skill', creatorContent, hookLang, cliModel } = req.body;
+  if (!prompt?.trim()) return res.status(400).json({ error: 'prompt is required' });
+  if (cliModel && !CLI_MODEL_RE.test(cliModel)) return res.status(400).json({ error: 'Invalid model name' });
+  const fullPrompt = buildGenerationPrompt({ prompt, type, creatorContent, hookLang });
+  const model = CLI_MODEL_RE.test(String(cliModel || '')) ? cliModel : CLI_GEN_MODEL;
+  const ext = type === 'hook' ? (hookLang || '.mjs') : (type === 'command' ? '.md' : '.md');
+  const outFile = `generated-${type}${ext}`;
+  const flags = `--model ${model} --allowedTools "" ${CLI_DIET_FLAGS}`;
+  let delim = 'PROMPT', n = 2;
+  while (fullPrompt.split('\n').some(l => l.trim() === delim)) delim = 'PROMPT_END_' + n++;
+  const bash = `cat << '${delim}' | claude -p ${flags} > ${outFile}\n${fullPrompt}\n${delim}`;
+  const powershell = `@'\n${fullPrompt.replace(/'/g, "''")}\n'@ | claude -p ${flags} | Out-File -Encoding utf8 ${outFile}`;
+  res.json({ bash, powershell, outFile });
+});
+
+app.post('/api/ai/generate-skill', async (req, res) => {
+  const { prompt, provider, type = 'skill', creatorContent, hookLang, cliModel } = req.body;
+  if (!prompt?.trim()) return res.status(400).json({ error: 'prompt is required' });
+  if (cliModel && !CLI_MODEL_RE.test(cliModel)) return res.status(400).json({ error: 'Invalid model name' });
+  const fullPrompt = buildGenerationPrompt({ prompt, type, creatorContent, hookLang });
   try {
     let content;
     if (provider === 'openrouter') {

@@ -2,7 +2,7 @@
 
 **A local control center for Claude Code — browse, build, test, and repair everything in your `~/.claude` setup through a clean web UI instead of hand-editing a maze of config files.**
 
-![tests](https://img.shields.io/badge/tests-248%20passing-brightgreen) ![node](https://img.shields.io/badge/node-%E2%89%A518-blue) ![deps](https://img.shields.io/badge/dependencies-1%20(express)-lightgrey) ![license](https://img.shields.io/badge/license-MIT-green)
+![tests](https://img.shields.io/badge/tests-250%20passing-brightgreen) ![node](https://img.shields.io/badge/node-%E2%89%A518-blue) ![deps](https://img.shields.io/badge/dependencies-1%20(express)-lightgrey) ![license](https://img.shields.io/badge/license-MIT-green)
 
 Runs entirely on your machine. Zero build step. One dependency.
 
@@ -105,7 +105,7 @@ PORT=3001 npm start                   # different port
 | Frontend | Vanilla JS + Monaco editor, single-page | Zero build step; `Cache-Control: no-store` means updates apply on refresh |
 | Design | Apple HIG system colors + Sanzo Wada-inspired identity palette | Color encodes *state*, not decoration |
 | AI providers | Claude Code CLI (`claude -p`) and OpenRouter | Subscription-based or API-based, user's choice |
-| Tests | Node's built-in `node --test`, 248 tests | Each file boots an isolated server: temp `.claude`, temp `HOME`, fixture marketplace/OpenRouter endpoints, and a fake `claude` CLI shim — no network, no real install needed |
+| Tests | Node's built-in `node --test`, 250 tests | Each file boots an isolated server: temp `.claude`, temp `HOME`, fixture marketplace/OpenRouter endpoints, and a fake `claude` CLI shim — no network, no real install needed |
 
 Notable engineering decisions:
 
@@ -152,7 +152,7 @@ One-shot **▶ Run** uses `claude --dangerously-skip-permissions`. Be clear-eyed
 npm test
 ```
 
-248 tests covering every endpoint and scenario, including regression tests for every bug found in production use. See [`tests/README.md`](tests/README.md) for the bug-fix history.
+250 tests covering every endpoint and scenario, including regression tests for every bug found in production use. See [`tests/README.md`](tests/README.md) for the bug-fix history.
 
 ## Project structure
 
