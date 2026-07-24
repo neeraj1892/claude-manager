@@ -20,6 +20,18 @@ This creates three real problems:
 
 Claude Manager puts all of it in one place — and adds the guardrails, generators, and quality checks that the raw files can't give you.
 
+## Why not just ask Claude, or use an editor?
+
+**"Claude Code can already create skills."** It can *write* one when you ask. It can't be three things a chat fundamentally isn't:
+
+- **An inventory.** A conversation has no persistent picture of your setup — the hook that's silently unwired, the MCP server hiding in a config file you forgot exists, the skill that will stall on permission prompts. A dashboard's job is that nothing stays invisible.
+- **A pipeline.** Chat-generated quality varies with the conversation. Here every generation flows through the same hardened prompts and *deterministic* post-processing — tool-grant lint, auto-grant, escape/fence repair, a capped self-eval. Asking a talented colleague vs. having CI.
+- **An operations panel.** Wiring hooks, marketplace installs, one-shot runs with output contracts, health metrics over time — operations on your setup, not documents.
+
+**"I could edit these files in my IDE."** An editor edits text; it doesn't know Claude Code's *semantics*. No IDE tells you that `allowed-tools: Read` doesn't cover the `Edit` your step 3 uses, that your trigger phrases will never fire, or that a hook file exists but is wired to nothing. And the config surface isn't even one folder you could open.
+
+**The honest version:** a power user who knows the docs cold can do all of this manually. The app doesn't make anything *possible* — it makes it **visible, repeatable, and safe for people who don't have the docs memorized**. It's not a competitor to Claude Code; it drives `claude` underneath — the garage with diagnostics, not a second engine.
+
 ## Who it's for
 
 **Non-technical users** describe what they want in plain English — *"a skill that summarizes my uncommitted changes"* — and get a production-quality skill generated, quality-checked, and installed. Guided forms replace raw JSON everywhere: adding MCP servers, wiring hooks, editing settings. Every file, tab, and concept has a built-in explanation, and **🤖 Explain with AI** turns any artifact into plain English.
