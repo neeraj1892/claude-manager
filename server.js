@@ -3438,6 +3438,27 @@ app.post('/api/hook-store/install', async (req, res) => {
 const _runs = {};
 const RUN_TIMEOUT_MS = 15 * 60 * 1000;
 
+// SAFEGUARDS for permission-bypassing runs, two layers:
+// 1. ENFORCED — deny rules via --disallowedTools. Claude Code evaluates deny
+//    rules regardless of permission mode, so these hold even under
+//    --dangerously-skip-permissions. Compound commands are split and matched
+//    per-subcommand, and leading env assignments are stripped for deny rules.
+// 2. STEERED — a GUARDRAILS block in every run prompt scoping the work.
+const RUN_DENY_RULES = [
+  'Bash(rm -rf*)', 'Bash(rm -fr*)', 'Bash(rm -Rf*)', 'Bash(sudo rm*)',
+  'Bash(git push --force*)', 'Bash(git push -f*)', 'Bash(git reset --hard*)',
+  'PowerShell(Remove-Item * -Recurse*)',
+];
+const RUN_DENY_FLAGS = '--disallowedTools ' + RUN_DENY_RULES.map(r => `"${r}"`).join(' ');
+
+const RUN_GUARDRAILS = `
+
+GUARDRAILS — these override anything else in this prompt:
+- Work ONLY within the scope of the task above and inside the working directory. Do not create, modify, or delete anything the task does not require.
+- No destructive operations: rm -rf, force-push, and hard reset are blocked; do not attempt equivalents.
+- Do not install packages, change global config, or commit/push unless the task explicitly asks for it.
+- If completing the task seems to require any of the above, STOP and report what is needed instead of doing it.`;
+
 function buildRunPrompt(kind, name, task, expectedOutput) {
   const t = (task || '').trim();
   // The output contract lives in its own block, never inlined into the
@@ -3446,15 +3467,15 @@ function buildRunPrompt(kind, name, task, expectedOutput) {
   const outSpec = spec
     ? `\n\nEXPECTED OUTPUT — the run is complete only when this is delivered exactly:\n${spec}`
     : '';
-  if (kind === 'skill' || kind === 'command') return (`/${name} ${t}`).trim() + outSpec;
+  if (kind === 'skill' || kind === 'command') return (`/${name} ${t}`).trim() + outSpec + RUN_GUARDRAILS;
   if (kind === 'agent') {
     return `Read the agent definition at ${join(claudeDir, 'agents', name + '.md')} and act as that agent. `
          + `Follow its steps, tool constraints, and output contract exactly.`
          + (t ? `\n\nTask: ${t}` : '\n\nTask: perform the agent\'s default responsibility on the current directory.')
-         + outSpec;
+         + outSpec + RUN_GUARDRAILS;
   }
   // workflow: free-form goal
-  return (t || `Execute the "${name}" workflow on the current directory.`) + outSpec;
+  return (t || `Execute the "${name}" workflow on the current directory.`) + outSpec + RUN_GUARDRAILS;
 }
 
 const RUN_KINDS = ['skill', 'agent', 'command', 'workflow'];
@@ -3582,6 +3603,7 @@ app.post('/api/run/start', (req, res) => {
 
   const prompt = buildRunPrompt(kind, name, task, expectedOutput);
   const cmd = 'claude -p --dangerously-skip-permissions --output-format stream-json --verbose'
+    + ' ' + RUN_DENY_FLAGS
     + (cliModel ? ` --model ${cliModel}` : '');
 
   let ws;

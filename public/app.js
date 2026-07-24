@@ -5012,6 +5012,18 @@ async function setRunProvider(p) {
 document.getElementById('runProvCli').onclick = () => setRunProvider('claude-cli');
 document.getElementById('runProvOr').onclick  = () => setRunProvider('openrouter');
 
+// Mirrors RUN_DENY_RULES in server.js. Deny rules are evaluated regardless of
+// permission mode — they hold even under --dangerously-skip-permissions.
+const RUN_DENY_FLAGS = '--disallowedTools "Bash(rm -rf*)" "Bash(rm -fr*)" "Bash(rm -Rf*)" "Bash(sudo rm*)" "Bash(git push --force*)" "Bash(git push -f*)" "Bash(git reset --hard*)" "PowerShell(Remove-Item * -Recurse*)"';
+const RUN_GUARDRAIL_LINES = [
+  '',
+  'GUARDRAILS — these override anything else in this prompt:',
+  '- Work ONLY within the scope of the task above and inside the working directory. Do not create, modify, or delete anything the task does not require.',
+  '- No destructive operations: rm -rf, force-push, and hard reset are blocked; do not attempt equivalents.',
+  '- Do not install packages, change global config, or commit/push unless the task explicitly asks for it.',
+  '- If the task seems to require any of the above, STOP and report what is needed instead of doing it.',
+];
+
 function buildManualRunCmd() {
   const { kind, name } = _runModal;
   const task = document.getElementById('runTask').value.trim();
@@ -5030,6 +5042,7 @@ function buildManualRunCmd() {
     promptLines.push(task || `Execute the "${name}" workflow.`);
   }
   if (expected) promptLines.push('', 'EXPECTED OUTPUT — the run is complete only when this is delivered exactly:', expected);
+  promptLines.push(...RUN_GUARDRAIL_LINES);
 
   return _shellPref === 'powershell' ? buildPsCommand(promptLines, cwd, file, model)
     : _shellPref === 'portable'      ? buildPortableCommand(promptLines, cwd, file, model)
@@ -5053,7 +5066,7 @@ function buildPortableCommand(promptLines, cwd, file, model) {
   const dir = String(file).includes('/') ? String(file).replace(/\/[^/]*$/, '') : '';
   // cd only when a directory was chosen (blank = run right where the terminal is);
   // cd comes first so a relative output dir is created inside the working directory
-  return `${cwd ? `cd ${cwd} ; ` : ''}${dir ? `mkdir -p ${dir} ; ` : ''}claude -p '${prompt}' --dangerously-skip-permissions --output-format stream-json --verbose${model ? ` --model ${model}` : ''} > ${file}`;
+  return `${cwd ? `cd ${cwd} ; ` : ''}${dir ? `mkdir -p ${dir} ; ` : ''}claude -p '${prompt}' --dangerously-skip-permissions ${RUN_DENY_FLAGS} --output-format stream-json --verbose${model ? ` --model ${model}` : ''} > ${file}`;
 }
 
 // bash/zsh: heredoc prompt, backslash continuations, ~ kept expandable
@@ -5073,6 +5086,7 @@ function buildBashCommand(promptLines, cwd, file, model) {
   return [
     `${pre.length ? pre.join(' && ') + ' && ' : ''}claude -p \\`,
     `  --dangerously-skip-permissions \\`,
+    `  ${RUN_DENY_FLAGS} \\`,
     `  --output-format stream-json --verbose \\`,
     ...(model ? [`  --model ${model} \\`] : []),
     `  > ${qp(file)} << '${delim}'`,
@@ -5102,6 +5116,7 @@ function buildPsCommand(promptLines, cwd, file, model) {
     ...promptLines,
     `'@ | claude -p ${bt}`,
     `  --dangerously-skip-permissions ${bt}`,
+    `  ${RUN_DENY_FLAGS} ${bt}`,
     `  --output-format stream-json --verbose${model ? ` ${bt}\n  --model ${model}` : ''} |`,
     `  Out-File -Encoding utf8 ${qpsPath(file)}`,
   ].join('\n');

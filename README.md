@@ -2,7 +2,7 @@
 
 **A local control center for Claude Code — browse, build, test, and repair everything in your `~/.claude` setup through a clean web UI instead of hand-editing a maze of config files.**
 
-![tests](https://img.shields.io/badge/tests-245%20passing-brightgreen) ![node](https://img.shields.io/badge/node-%E2%89%A518-blue) ![deps](https://img.shields.io/badge/dependencies-1%20(express)-lightgrey) ![license](https://img.shields.io/badge/license-MIT-green)
+![tests](https://img.shields.io/badge/tests-246%20passing-brightgreen) ![node](https://img.shields.io/badge/node-%E2%89%A518-blue) ![deps](https://img.shields.io/badge/dependencies-1%20(express)-lightgrey) ![license](https://img.shields.io/badge/license-MIT-green)
 
 Runs entirely on your machine. Zero build step. One dependency.
 
@@ -105,7 +105,7 @@ PORT=3001 npm start                   # different port
 | Frontend | Vanilla JS + Monaco editor, single-page | Zero build step; `Cache-Control: no-store` means updates apply on refresh |
 | Design | Apple HIG system colors + Sanzo Wada-inspired identity palette | Color encodes *state*, not decoration |
 | AI providers | Claude Code CLI (`claude -p`) and OpenRouter | Subscription-based or API-based, user's choice |
-| Tests | Node's built-in `node --test`, 245 tests | Each file boots an isolated server: temp `.claude`, temp `HOME`, fixture marketplace/OpenRouter endpoints, and a fake `claude` CLI shim — no network, no real install needed |
+| Tests | Node's built-in `node --test`, 246 tests | Each file boots an isolated server: temp `.claude`, temp `HOME`, fixture marketplace/OpenRouter endpoints, and a fake `claude` CLI shim — no network, no real install needed |
 
 Notable engineering decisions:
 
@@ -125,6 +125,8 @@ One-shot **▶ Run** uses `claude --dangerously-skip-permissions`. Be clear-eyed
 
 **What protects you today:**
 
+- **Enforced deny rules on every run** — the app passes `--disallowedTools` blocking `rm -rf` (all spellings), `sudo rm`, `git push --force`, and `git reset --hard`. Deny rules are evaluated by Claude Code *regardless of permission mode*, so these hold even under `--dangerously-skip-permissions` — mechanical, not advisory. The same flags are baked into the copy-paste terminal commands.
+- **Scope guardrails in every run prompt** — work only within the task and working directory, no unrequested files, no package installs or commits unless asked, and stop-and-report when a task seems to need something destructive. (Steering — the deny rules above are the hard layer.)
 - **Full audit trail** — the JSONL output logs *every* tool call, file touched, and command run. After any run, the log is the complete record of what Claude actually did.
 - **`deny` rules survive bypass mode.** Claude Code evaluates `permissions.deny` regardless of mode — rules like `Read(.env)`, `Read(**/secrets/**)`, or `Edit(//path/to/prod/**)` in your `settings.json` hold even under `--dangerously-skip-permissions`. Set them once (Settings → ✨ Add with AI can write them for you).
 - **Built-in circuit breakers** — Claude Code still prompts on catastrophic removals (`rm -rf /`, `rm -rf ~`) even in bypass mode.
@@ -146,7 +148,7 @@ One-shot **▶ Run** uses `claude --dangerously-skip-permissions`. Be clear-eyed
 npm test
 ```
 
-245 tests covering every endpoint and scenario, including regression tests for every bug found in production use. See [`tests/README.md`](tests/README.md) for the bug-fix history.
+246 tests covering every endpoint and scenario, including regression tests for every bug found in production use. See [`tests/README.md`](tests/README.md) for the bug-fix history.
 
 ## Project structure
 

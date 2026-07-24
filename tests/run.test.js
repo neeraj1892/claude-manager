@@ -120,9 +120,23 @@ test('skill run: streams stream-json events into the chosen JSONL file', async (
   lines.forEach(l => JSON.parse(l)); // every line is valid JSON
   assert.equal(JSON.parse(lines[lines.length - 1]).type, 'result');
 
-  // The prompt is the slash-command invocation of the skill
+  // The prompt is the slash-command invocation of the skill + the guardrails
   const prompt = s.readShimPrompt();
-  assert.equal(prompt, '/my-skill do the thing');
+  assert.ok(prompt.startsWith('/my-skill do the thing'), 'invocation first: ' + prompt.slice(0, 40));
+  assert.ok(prompt.includes('GUARDRAILS — these override anything else'), 'scope guardrails appended to every run');
+});
+
+test('SAFEGUARDS: deny rules ride every run and survive bypass mode', async () => {
+  const r = await s.api('POST', '/run/start', {
+    kind: 'skill', name: 'my-skill', task: 'x', outputFile: join(s.home, 'runs', 'guard.jsonl'), cwd: s.home,
+  });
+  assert.equal(r.status, 200);
+  assert.match(r.data.command, /--disallowedTools/, 'deny flags on the command');
+  assert.match(r.data.command, /Bash\(rm -rf\*\)/, 'rm -rf mechanically blocked');
+  assert.match(r.data.command, /git push --force/, 'force-push blocked');
+  await waitForRun(r.data.id);
+  const args = s.readShimArgs();
+  assert.ok(args.includes('--disallowedTools'), 'flags reached the CLI: ' + args.slice(0, 120));
 });
 
 test('relative outputFile resolves against the run cwd, not the server cwd', async () => {
@@ -153,7 +167,7 @@ test('workflow run: free-form goal prompt', async () => {
   });
   assert.equal(r.status, 200);
   await waitForRun(r.data.id);
-  assert.equal(s.readShimPrompt(), 'commit my changes properly');
+  assert.ok(s.readShimPrompt().startsWith('commit my changes properly'));
 });
 
 test('expected output: stated as a contract in the prompt for every kind + provider', async () => {
@@ -229,7 +243,7 @@ test('command run: invoked as slash command', async () => {
   });
   assert.equal(r.status, 200, JSON.stringify(r.data));
   await waitForRun(r.data.id);
-  assert.equal(s.readShimPrompt(), '/changelog v1.2.0');
+  assert.ok(s.readShimPrompt().startsWith('/changelog v1.2.0'));
 });
 
 // ── OpenRouter provider (text-only) ──
