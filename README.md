@@ -140,7 +140,12 @@ One-shot **▶ Run** uses `claude --dangerously-skip-permissions`. Be clear-eyed
 3. Consider enabling Claude Code's **sandboxing** (`sandbox` in settings) for OS-level filesystem/network fencing of shell commands — a layer permissions can't provide.
 4. Never point a run at a directory containing live credentials or production configs.
 
-**What we don't do yet (honestly):** no sandbox of our own, no automatic post-run diff summary, no rollback button. A post-run `git diff --stat` panel is the most likely next safety feature.
+**"Why not just scope Claude to one folder?"** Two different answers:
+
+- *The app's own AI calls* (generate, improve, eval, explain, compose) are already scoped tighter than any folder: they run with `--allowedTools ""` — **zero tools**. Claude cannot read or write anything during generation; it only returns text, and the app's server saves it, path-traversal-guarded to your `.claude` folder.
+- *One-shot runs* intentionally can't be scoped to `.claude` — their whole purpose is doing work in your project folder. The right fence is "confine to the chosen working directory," and the honest capability map there: deny rules can't express "everywhere except this folder," and bypass mode skips the usual leaving-the-directory prompts — so per-run flags alone can't fully fence the file tools. The real boundary is Claude Code's **sandboxing** (`sandbox` in settings): OS-level filesystem/network confinement for shell commands (macOS/Linux) that merges with deny rules and applies to every run. Enable it once; it's the strongest fence available today.
+
+**What we don't do yet (honestly):** no sandbox of our own, no per-run sandbox profile scoped to the run's working directory (buildable via `--settings`; the most likely next safety feature alongside a post-run `git diff --stat` panel), no rollback button.
 
 ## Testing
 
