@@ -1317,7 +1317,8 @@
         <div style="font-size:11px;color:var(--text-dim);margin-top:4px">Every event Claude emits (tool calls, text, result) is appended as one JSON line.</div>
       </div>
       <div id="runPermWarning" style="background:var(--warning-bg);border:1px solid color-mix(in srgb, var(--warning) 35%, transparent);border-radius:var(--radius-sm);padding:9px 12px;font-size:12px;color:var(--warning);margin-bottom:14px">
-        ⚠ Runs with <code>--dangerously-skip-permissions</code> — Claude can use all tools (edit files, run commands) in the working directory without asking. Only run things you trust.
+        ⚠ Runs with <code>--dangerously-skip-permissions</code> — Claude can use all tools (edit files, run commands, reach the network) without asking, and is not technically confined to the working directory. Only run things you trust.<br>
+        <span style="font-weight:400">🛡 Best habit: run inside a clean git checkout — <code>git diff</code> afterwards shows every change and can revert it. Your <code>permissions.deny</code> rules (e.g. <code>Read(.env)</code>) still apply even in this mode. The JSONL output is a full audit log of every action taken.</span>
       </div>
 
       <!-- Prefer to run it yourself? Copy the exact command -->

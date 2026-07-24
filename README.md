@@ -118,7 +118,27 @@ Notable engineering decisions:
 - Binds to localhost; designed for local, single-user use.
 - File APIs are path-traversal-guarded and scoped to the managed `.claude` folder.
 - Marketplace installs execute only `claude mcp add` / `claude plugin …` commands — anything else is rejected.
-- One-shot runs use `--dangerously-skip-permissions`: Claude can edit files and run commands in the chosen working directory without asking. The UI warns you; only run artifacts you trust, in projects you trust them with.
+
+### ⚠️ The big caveat: one-shot runs bypass permissions
+
+One-shot **▶ Run** uses `claude --dangerously-skip-permissions`. Be clear-eyed about what that means: Claude gets full tool access with **no confirmation gates** — it can edit and delete files, run shell commands, and reach the network as your user. Nothing technically confines it to the working directory you chose, and a misinterpreted prompt **can produce changes you didn't ask for**. This is inherent to unattended agent runs, not something this app can fully solve.
+
+**What protects you today:**
+
+- **Full audit trail** — the JSONL output logs *every* tool call, file touched, and command run. After any run, the log is the complete record of what Claude actually did.
+- **`deny` rules survive bypass mode.** Claude Code evaluates `permissions.deny` regardless of mode — rules like `Read(.env)`, `Read(**/secrets/**)`, or `Edit(//path/to/prod/**)` in your `settings.json` hold even under `--dangerously-skip-permissions`. Set them once (Settings → ✨ Add with AI can write them for you).
+- **Built-in circuit breakers** — Claude Code still prompts on catastrophic removals (`rm -rf /`, `rm -rf ~`) even in bypass mode.
+- **Stop button + 15-minute timeout** on every run.
+- Generated skills carry explicit scope constraints ("do not commit, do not add unrequested features") — steering, not a guarantee.
+
+**What you should do:**
+
+1. **Run inside a clean git checkout.** `git status` before, `git diff` after — you see every change and `git checkout .` reverts anything unwanted. This is the single most effective habit.
+2. For artifacts you don't fully trust, use a **disposable git worktree or container**.
+3. Consider enabling Claude Code's **sandboxing** (`sandbox` in settings) for OS-level filesystem/network fencing of shell commands — a layer permissions can't provide.
+4. Never point a run at a directory containing live credentials or production configs.
+
+**What we don't do yet (honestly):** no sandbox of our own, no automatic post-run diff summary, no rollback button. A post-run `git diff --stat` panel is the most likely next safety feature.
 
 ## Testing
 
