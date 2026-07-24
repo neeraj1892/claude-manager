@@ -5044,24 +5044,34 @@ function buildManualRunCmd() {
   if (expected) promptLines.push('', 'EXPECTED OUTPUT — the run is complete only when this is delivered exactly:', expected);
   promptLines.push(...RUN_GUARDRAIL_LINES);
 
-  return _shellPref === 'powershell' ? buildPsCommand(promptLines, cwd, file, model)
-    : _shellPref === 'portable'      ? buildPortableCommand(promptLines, cwd, file, model)
-    : buildBashCommand(promptLines, cwd, file, model);
+  const safe = _runManualPerm !== 'skip'; // default: ask each step
+  return _shellPref === 'powershell' ? buildPsCommand(promptLines, cwd, file, model, safe)
+    : _shellPref === 'portable'      ? buildPortableCommand(promptLines, cwd, file, model, safe)
+    : buildBashCommand(promptLines, cwd, file, model, safe);
 }
+
+// SAFE (interactive): Claude asks before each action. Must run interactively —
+// `claude -p` can't show permission prompts — so no -p, no skip flag, no JSONL
+// redirect; the prompt is passed as a single argument. Deny rules still ride
+// along as a hard floor. This is the "play safe" copy command.
 
 // ONE command that runs unchanged in bash, zsh, AND PowerShell (5.1+):
 // single-quoted strings are literal in all three, ';' separates commands
 // everywhere, and cd ~ / mkdir -p / > redirects exist in all. Not cmd.exe.
 // The single unportable character is the apostrophe (bash: '\'' vs PS: '') —
 // refuse honestly instead of emitting a command that breaks on one side.
-function buildPortableCommand(promptLines, cwd, file, model) {
+function buildPortableCommand(promptLines, cwd, file, model, safe) {
   const prompt = promptLines.join('\n');
-  const pathsOk = ![cwd, file].some(s => /['\s"]/.test(String(s)));
+  const checkPaths = safe ? [cwd] : [cwd, file];
+  const pathsOk = !checkPaths.some(s => /['\s"]/.test(String(s)));
   if (prompt.includes("'") || !pathsOk) {
     return [
       `# Portable mode unavailable: the ${prompt.includes("'") ? "prompt contains an apostrophe (')" : 'paths contain spaces or quotes'}`,
       '# bash and PowerShell escape these differently — pick a specific shell above.',
     ].join('\n');
+  }
+  if (safe) {
+    return `${cwd ? `cd ${cwd} ; ` : ''}claude ${RUN_DENY_FLAGS}${model ? ` --model ${model}` : ''} '${prompt}'`;
   }
   const dir = String(file).includes('/') ? String(file).replace(/\/[^/]*$/, '') : '';
   // cd only when a directory was chosen (blank = run right where the terminal is);
@@ -5070,12 +5080,16 @@ function buildPortableCommand(promptLines, cwd, file, model) {
 }
 
 // bash/zsh: heredoc prompt, backslash continuations, ~ kept expandable
-function buildBashCommand(promptLines, cwd, file, model) {
+function buildBashCommand(promptLines, cwd, file, model, safe) {
   const qp = (s) => {
     s = String(s);
     if (/^~($|\/)/.test(s)) return s.replace(/([ '"$`\\])/g, '\\$1');
     return `'` + s.replace(/'/g, `'\\''`) + `'`;
   };
+  if (safe) {
+    const arg = `'` + promptLines.join('\n').replace(/'/g, `'\\''`) + `'`;
+    return `${cwd ? `cd ${qp(cwd)} && ` : ''}claude ${RUN_DENY_FLAGS}${model ? ` --model ${model}` : ''} ${arg}`;
+  }
   // Delimiter must not appear as a line of the prompt, or the heredoc ends early
   let delim = 'PROMPT';
   let n = 2;
@@ -5097,13 +5111,19 @@ function buildBashCommand(promptLines, cwd, file, model) {
 
 // Windows PowerShell: single-quoted here-string (no interpolation), backtick
 // continuations, Out-File for reliable UTF-8 output
-function buildPsCommand(promptLines, cwd, file, model) {
+function buildPsCommand(promptLines, cwd, file, model, safe) {
   const qps = (s) => `'` + String(s).replace(/'/g, `''`) + `'`;
   // ~ paths: PowerShell won't expand ~ inside quotes — use $HOME in double quotes
   const qpsPath = (s) => /^~($|[\/\\])/.test(String(s))
     ? `"$HOME${String(s).slice(1).replace(/"/g, '`"')}"`
     : qps(s);
   const bt = '`';
+  if (safe) {
+    return [
+      ...(cwd ? [`cd ${qpsPath(cwd)}`] : []),
+      `claude ${RUN_DENY_FLAGS}${model ? ` --model ${model}` : ''} ${qps(promptLines.join('\n'))}`,
+    ].join('\n');
+  }
   // A prompt line that is exactly '@ would terminate the here-string early —
   // indent it by one space (whitespace-only change keeps the meaning)
   promptLines = promptLines.map(l => String(l).trim() === `'@` ? ' ' + l : l);
@@ -5122,10 +5142,28 @@ function buildPsCommand(promptLines, cwd, file, model) {
   ].join('\n');
 }
 
+let _runManualPerm = 'ask'; // default to the safe, interactive command
+
 function refreshManualRunCmd() {
   const el = document.getElementById('runManualCmd');
   if (el) el.value = buildManualRunCmd();
+  const hint = document.getElementById('runManualHint');
+  if (hint) {
+    hint.innerHTML = _runManualPerm === 'skip'
+      ? '⚡ <strong>Unattended</strong> — Claude runs without asking and streams a JSONL log to your output file. It can make changes you didn\'t ask for; run inside a clean git checkout so <code>git diff</code> can review and revert. First time? Accept <code>claude --dangerously-skip-permissions</code> once interactively — <code>-p</code> runs can\'t show that prompt.<br>⚠ Match the shell to your terminal; <strong>Portable</strong> needs no apostrophes in the prompt.'
+      : '🛡 <strong>Safe</strong> — opens an interactive Claude session and asks before every file edit and command, so you approve each step. No JSONL log in this mode (that\'s an unattended-only feature). Destructive commands (rm -rf, force-push) are blocked either way.<br>⚠ Match the shell to your terminal; <strong>Portable</strong> needs no apostrophes in the prompt.';
+  }
+  // Output file is only meaningful for the unattended (logging) mode
+  const outWrap = document.getElementById('runOutputFile')?.closest('.form-group');
+  if (outWrap) outWrap.style.opacity = _runManualPerm === 'skip' ? '1' : '.5';
 }
+document.querySelectorAll('[data-run-perm]').forEach(b => {
+  b.onclick = () => {
+    _runManualPerm = b.dataset.runPerm;
+    document.querySelectorAll('[data-run-perm]').forEach(x => x.classList.toggle('active', x === b));
+    refreshManualRunCmd();
+  };
+});
 document.getElementById('runTask').addEventListener('input', refreshManualRunCmd);
 document.getElementById('runExpected').addEventListener('input', refreshManualRunCmd);
 document.getElementById('runCwd').addEventListener('input', refreshManualRunCmd);

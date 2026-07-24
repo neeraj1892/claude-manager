@@ -93,6 +93,7 @@ test('manual command respects the shell toggle (bash heredoc vs PowerShell here-
   if (skipIfNoDom(t)) return;
   await w.eval("openRunModal('skill','demo-skill')");
   await new Promise(r => setTimeout(r, 80));
+  w.document.querySelector('[data-run-perm="skip"]').onclick(); // this test covers the unattended/logging form
   w.eval("setShellPref('bash'); refreshManualRunCmd()");
   let cmd = w.document.getElementById('runManualCmd').value;
   assert.ok(cmd.includes("<< 'PROMPT'"), 'bash uses heredoc');
@@ -116,6 +117,31 @@ test('manual command respects the shell toggle (bash heredoc vs PowerShell here-
   cmd = w.document.getElementById('runManualCmd').value;
   assert.ok(!cmd.includes('<< '), 'no heredoc leaks into PS');
   w.eval("setShellPref('bash')");
+  w.document.querySelector('[data-run-perm="ask"]').onclick(); // restore default
+});
+
+test('play-safe copy command: interactive, asks permission, still blocks rm -rf', (t) => {
+  if (skipIfNoDom(t)) return;
+  // SAFE (the default): interactive — no -p, no skip flag, no JSONL redirect
+  const bash = w.eval(`buildBashCommand(['/deploy now', 'line two'], '~/proj', 'x.jsonl', '', true)`);
+  assert.ok(bash.includes('claude '), 'runs claude');
+  assert.ok(!bash.includes('-p '), 'not -p — interactive so it can prompt');
+  assert.ok(!bash.includes('--dangerously-skip-permissions'), 'no skip flag → Claude asks each step');
+  assert.ok(!bash.includes('>') && !bash.includes('<<'), 'no JSONL redirect in interactive mode');
+  assert.ok(bash.includes('--disallowedTools') && bash.includes('rm -rf'), 'rm -rf still hard-blocked in safe mode');
+  assert.ok(bash.startsWith('cd ~/proj && '), 'cd honored');
+  assert.ok(bash.includes("'/deploy now\nline two'"), 'multi-line prompt passed as a single arg');
+
+  const ps = w.eval(`buildPsCommand(['/deploy now'], '', 'x.jsonl', '', true)`);
+  assert.ok(!ps.includes('-p ') && !ps.includes('Out-File'), 'PS safe form is interactive, no log');
+  assert.ok(ps.includes('--disallowedTools'), 'deny rules ride PS safe form too');
+
+  const portable = w.eval(`buildPortableCommand(['/deploy now'], '', 'x.jsonl', '', true)`);
+  assert.ok(!portable.includes('-p ') && !portable.includes('>'), 'portable safe form is interactive');
+
+  // UNATTENDED (opt-in): the old logging form, unchanged
+  const skip = w.eval(`buildBashCommand(['/deploy'], '', 'out.jsonl', '', false)`);
+  assert.ok(skip.includes('--dangerously-skip-permissions') && skip.includes("<< 'PROMPT'"), 'unattended still uses skip + heredoc + log');
 });
 
 test('portable command: one string valid in bash+zsh+PowerShell; honest refusal on apostrophes', (t) => {

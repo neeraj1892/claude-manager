@@ -2,7 +2,7 @@
 
 **A local control center for Claude Code — browse, build, test, and repair everything in your `~/.claude` setup through a clean web UI instead of hand-editing a maze of config files.**
 
-![tests](https://img.shields.io/badge/tests-246%20passing-brightgreen) ![node](https://img.shields.io/badge/node-%E2%89%A518-blue) ![deps](https://img.shields.io/badge/dependencies-1%20(express)-lightgrey) ![license](https://img.shields.io/badge/license-MIT-green)
+![tests](https://img.shields.io/badge/tests-248%20passing-brightgreen) ![node](https://img.shields.io/badge/node-%E2%89%A518-blue) ![deps](https://img.shields.io/badge/dependencies-1%20(express)-lightgrey) ![license](https://img.shields.io/badge/license-MIT-green)
 
 Runs entirely on your machine. Zero build step. One dependency.
 
@@ -61,7 +61,7 @@ Claude Manager puts all of it in one place — and adds the guardrails, generato
 
 ### Run and verify
 - **▶ Run** any skill, agent, command, or workflow one-shot: choose working directory, output JSONL path, model pin, and an optional expected-output contract. Live tail, stop button, 15-minute timeout.
-- Prefer a terminal? The modal generates the exact command in your dialect — **bash/zsh** (heredoc), **Windows PowerShell** (here-string), or **Portable**, a single command valid in all three shells.
+- Prefer a terminal? The modal generates the exact command in your dialect — **bash/zsh**, **Windows PowerShell**, or **Portable** (valid in all three) — in two flavors: **🛡 Ask each step** (default — an interactive session that asks before every edit and command, for playing safe) or **⚡ Skip & log** (unattended, streams JSONL). Destructive commands are blocked in both.
 - **OpenRouter provider** for text-only dry runs when Claude Code isn't installed.
 
 ### Improve over time
@@ -105,7 +105,7 @@ PORT=3001 npm start                   # different port
 | Frontend | Vanilla JS + Monaco editor, single-page | Zero build step; `Cache-Control: no-store` means updates apply on refresh |
 | Design | Apple HIG system colors + Sanzo Wada-inspired identity palette | Color encodes *state*, not decoration |
 | AI providers | Claude Code CLI (`claude -p`) and OpenRouter | Subscription-based or API-based, user's choice |
-| Tests | Node's built-in `node --test`, 246 tests | Each file boots an isolated server: temp `.claude`, temp `HOME`, fixture marketplace/OpenRouter endpoints, and a fake `claude` CLI shim — no network, no real install needed |
+| Tests | Node's built-in `node --test`, 248 tests | Each file boots an isolated server: temp `.claude`, temp `HOME`, fixture marketplace/OpenRouter endpoints, and a fake `claude` CLI shim — no network, no real install needed |
 
 Notable engineering decisions:
 
@@ -152,7 +152,7 @@ One-shot **▶ Run** uses `claude --dangerously-skip-permissions`. Be clear-eyed
 npm test
 ```
 
-246 tests covering every endpoint and scenario, including regression tests for every bug found in production use. See [`tests/README.md`](tests/README.md) for the bug-fix history.
+248 tests covering every endpoint and scenario, including regression tests for every bug found in production use. See [`tests/README.md`](tests/README.md) for the bug-fix history.
 
 ## Project structure
 

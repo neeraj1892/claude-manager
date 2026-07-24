@@ -1324,7 +1324,12 @@
       <!-- Prefer to run it yourself? Copy the exact command -->
       <details id="runManualWrap" style="margin-bottom:14px">
         <summary style="cursor:pointer;font-size:12px;color:var(--text-muted)">💻 Run it yourself instead — copy the terminal command</summary>
-        <div style="display:flex;gap:6px;margin-top:8px;align-items:center">
+        <div style="display:flex;gap:6px;margin-top:8px;align-items:center;flex-wrap:wrap">
+          <span style="font-size:11px;color:var(--text-dim)">Permissions:</span>
+          <button class="gen-type-tab active" data-run-perm="ask" type="button" style="padding:3px 10px;font-size:11px" title="Runs interactively — Claude asks before every file edit and command. Safest.">🛡 Ask each step (safe)</button>
+          <button class="gen-type-tab" data-run-perm="skip" type="button" style="padding:3px 10px;font-size:11px" title="Unattended — Claude acts without asking and streams a JSONL log. Faster, but it can make changes you didn't ask for.">⚡ Skip &amp; log (unattended)</button>
+        </div>
+        <div style="display:flex;gap:6px;margin-top:8px;align-items:center;flex-wrap:wrap">
           <span style="font-size:11px;color:var(--text-dim)">Shell:</span>
           <button class="gen-type-tab" data-shell-pick="portable" type="button" style="padding:3px 10px;font-size:11px">Portable (any shell)</button>
           <button class="gen-type-tab" data-shell-pick="bash" type="button" style="padding:3px 10px;font-size:11px">bash / zsh (macOS · Linux)</button>
@@ -1334,10 +1339,7 @@
           <textarea id="runManualCmd" readonly rows="9" style="flex:1;font-family:monospace;font-size:11px;background:var(--surface2)"></textarea>
           <button class="btn btn-secondary btn-sm" id="runManualCopy" type="button">Copy</button>
         </div>
-        <div style="font-size:11px;color:var(--text-muted);margin-top:6px;line-height:1.5">
-          ⚠ Match the shell to the terminal you paste into — the bash version hangs PowerShell at a <code>&gt;&gt;</code>/quote prompt (no heredoc support), and vice versa. <strong>Portable</strong> runs unchanged in bash, zsh, and PowerShell (not cmd.exe) as long as the prompt has no apostrophe; on Windows PowerShell 5.1 its JSONL comes out UTF-16.<br>
-          ⚠ First time using <code>--dangerously-skip-permissions</code>? Run <code>claude --dangerously-skip-permissions</code> once interactively and accept the warning — non-interactive <code>-p</code> runs can't show that prompt and will refuse. It's also refused in root/admin sessions.
-        </div>
+        <div id="runManualHint" style="font-size:11px;color:var(--text-muted);margin-top:6px;line-height:1.5"></div>
       </details>
 
       <div class="folder-dialog-actions">
